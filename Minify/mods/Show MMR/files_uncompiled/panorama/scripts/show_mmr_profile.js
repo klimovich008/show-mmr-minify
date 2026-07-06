@@ -150,12 +150,32 @@ var ShowMMR_SendRefresh = function (mmr) {
 	GameEvents.SendCustomGameEventToServer("ShowMMR_Refresh", {mmr: mmr});
 };
 
+var ShowMMR_ProfileReadMMR = function (root) {
+	if (!root.BHasClass("MMRCalibrated")) return -1;
+
+	return parseInt($.Localize("#ranked_mmr_value", root).replace(/\D+/g, ""), 10) || -1;
+};
+
+var ShowMMR_ProfileCaptureFromOpenPage = function (root, data) {
+	if (data.Refreshing) return;
+
+	var now = Date.now ? Date.now() : (new Date()).getTime();
+	if (data.LastProfileCaptureAt && now - data.LastProfileCaptureAt < 300000) return;
+
+	var mmr = ShowMMR_ProfileReadMMR(root);
+	if (mmr < 0) return;
+
+	data.LastProfileCaptureAt = now;
+	ShowMMR_SendRefresh(mmr);
+};
+
 var ShowMMR_ProfileValue = function () {
 	var root = ShowMMR_ProfileRoot();
 	var data = ShowMMR_ProfileData(root);
 	if (!data) return;
 
 	ShowMMR_ProfileStartScanner();
+	ShowMMR_ProfileCaptureFromOpenPage(root, data);
 
 	if (!data.Refreshing) return;
 
@@ -163,9 +183,7 @@ var ShowMMR_ProfileValue = function () {
 
 	data.mmr = -1;
 	root.style.visibility = "collapse";
-	if (root.BHasClass("MMRCalibrated")) {
-		data.mmr = parseInt($.Localize("#ranked_mmr_value", root).replace(/\D+/g, ""), 10) || -1;
-	}
+	data.mmr = ShowMMR_ProfileReadMMR(root);
 
 	if (data.mmr > -1 || --data.retries < 1) {
 		data.retries = -1;

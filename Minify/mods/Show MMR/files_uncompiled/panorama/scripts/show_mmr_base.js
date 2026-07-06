@@ -63,17 +63,19 @@ var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 
 	if (oldState !== 1 && oldState !== 3) {
-		$.Schedule(20.0, ShowMMR_Refresh);
+		$.Schedule(20.0, function () {
+			ShowMMR_Refresh(true);
+		});
 	}
 };
 
-var ShowMMR_Refresh = function () {
+var ShowMMR_Refresh = function (force) {
 	var data = ShowMMR_GetData();
 	if (!data || data.Refreshing) return;
 	if (!ShowMMR_IsDashboard()) return;
 
 	var now = Date.now ? Date.now() : (new Date()).getTime();
-	if (data.StartupGraceUntil && now < data.StartupGraceUntil) return;
+	if (!force && data.StartupGraceUntil && now < data.StartupGraceUntil) return;
 	if (data.LastRefreshAt && now - data.LastRefreshAt < 30000) return;
 	data.LastRefreshAt = now;
 
@@ -123,4 +125,7 @@ var ShowMMR_Init = function () {
 	}
 
 	ShowMMR_GameUIStateChanged(1, 3);
+	$.Schedule(45.0, function () {
+		ShowMMR_Refresh(true);
+	});
 };
