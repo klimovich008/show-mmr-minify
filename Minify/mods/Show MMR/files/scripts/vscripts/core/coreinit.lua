@@ -59,6 +59,9 @@ function ShowMMR:Init(e)
 		Convars:RegisterCommand('cfg', function(_, key, _, val, ...)
 			if key and key:match('%l[%l%d_]+') and val then
 				self.cfg[key] = val
+				if key == 'recent_game_time_3' then
+					self:Save({round_name = 'cfg_updated'})
+				end
 				if key == 'cfg_updated' and val == '1' then
 					FireGameEvent('round_start', {round_name = 'cfg_updated', round_number = 1})
 				end
@@ -72,10 +75,20 @@ function ShowMMR:Init(e)
 end
 
 function ShowMMR:Refresh(_, e)
+	if e == nil then return end
+
 	self.mmr = tonumber(e.mmr) or -1
 	if self.mmr < 0 then return end
 
-	SendToServerConsole('dota_game_account_client_debug | cfg; echo "cfg_updated: 1" | cfg;')
+	local manual_time = tonumber(e.time) or 0
+	print('[ShowMMR] refresh mmr=' .. tostring(self.mmr) .. ' time=' .. tostring(manual_time))
+	if manual_time > 0 then
+		self.cfg.recent_game_time_1 = tostring(manual_time)
+		self:Save({round_name = 'cfg_updated'})
+		return
+	end
+
+	SendToServerConsole('dota_game_account_client_debug | cfg;')
 end
 
 function ShowMMR:Save(e)
@@ -90,6 +103,7 @@ function ShowMMR:Save(e)
 		local change, t = 0, tonumber(time_1)
 		if find_2 ~= nil and find_2[1] > 0 then change = rank_1 - find_2[1] end
 		vlua.tableadd(self.data, {[t] = {rank_1, change}})
+		vlua.tableadd(self.history, {[t] = {rank_1, change}})
 		CustomNetTables:SetTableValue('ShowMMR_update', ' ' .. time_1, {rank_1, change})
 		serialize = true
 	end
@@ -97,6 +111,7 @@ function ShowMMR:Save(e)
 	if find_2 ~= nil and find_2[1] > 0 and find_2[2] == 0 and find_3 ~= nil and find_3[1] > 1 then
 		local rank_2, change, t = find_2[1], find_2[1] - find_3[1], tonumber(time_2)
 		vlua.tableadd(self.data, {[t] = {rank_2, change}})
+		vlua.tableadd(self.history, {[t] = {rank_2, change}})
 		CustomNetTables:SetTableValue('ShowMMR_update', ' ' .. time_2, {rank_2, change})
 		serialize = true
 	end
@@ -117,6 +132,7 @@ function ShowMMR:Save(e)
 	end
 
 	if serialize == true then
+		print('[ShowMMR] saving bindings entries=' .. tostring(#ordered))
 		if table.nkeys == nil then require 'table.nkeys' end
 		local remain, limit, pages, line, text = table.nkeys(self.data), table.nkeys(self.bind), 1, 0, ''
 		for _, v in ipairs(ordered) do

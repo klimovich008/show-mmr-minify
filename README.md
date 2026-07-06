@@ -9,7 +9,7 @@ badge with the MMR change when that match is known.
 ## Requirements
 
 - Dota 2
-- Minify 1.13.1 or newer
+- Minify 1.13 or newer
 - Dota 2 Workshop Tools installed, so Minify can compile Panorama JS/XML
 - Dota launch option: `-language minify`
 
@@ -36,16 +36,17 @@ badge with the MMR change when that match is known.
   the rows the MMR labels are applied again.
 - Normal matches without known stored MMR data stay unchanged.
 
-The local storage file is account-specific and looks like:
+The local storage file is account-specific and lives under Steam userdata:
 
 ```text
-game\dota\cfg\user_keys_<steam_user_id>_slot3.vcfg
+C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
 ## Usage
 
-After a ranked match, open Dota normally. Once the mod has stored data for a
-match, open your profile match history. Known ranked rows show values like:
+After a ranked match, open Dota normally, then open Profile -> History -> Match
+History. Once the mod has stored data for a match, known ranked rows show values
+like:
 
 ```text
 6,000 (+25)
@@ -60,7 +61,7 @@ For debugging without waiting for a new ranked result, you can seed local data
 manually. Close Dota first, then edit:
 
 ```text
-game\dota\cfg\user_keys_<steam_user_id>_slot3.vcfg
+C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
 Example:
@@ -88,6 +89,10 @@ MMR values.
 - If labels disappear after refreshing match history, patch again with this
   version; it keeps scanning while the profile page exists.
 - If no rows change, the mod probably has no stored history for those matches.
+  Open Profile -> History -> Match History once so the profile scanner can bind
+  the current MMR to the newest ranked row.
+- For live debugging, Dota's console log should contain lines starting with
+  `[ShowMMR] profile:` and `[ShowMMR] refresh`.
 - If Dota changes private dashboard XML, profile selectors, or
   `dota_game_account_client_debug`, the mod may need another update.
 

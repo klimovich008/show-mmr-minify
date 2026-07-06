@@ -1,6 +1,13 @@
 "use strict";
 
 var ShowMMR_ProfileScannerRunning = false;
+var ShowMMR_ProfileLoggedNoCore = false;
+var ShowMMR_ProfileLoggedInit = false;
+var ShowMMR_ProfileLoggedRows = false;
+
+var ShowMMR_ProfileDebug = function (message) {
+	$.Msg("[ShowMMR] " + message);
+};
 
 var ShowMMR_ProfileRoot = function () {
 	var panel = $.GetContextPanel();
@@ -9,8 +16,18 @@ var ShowMMR_ProfileRoot = function () {
 };
 
 var ShowMMR_ProfileData = function (root) {
-	var core = root.FindAncestor("DashboardCore");
-	if (!core) return null;
+	var core = root ? root.FindAncestor("DashboardCore") : null;
+	if (!core) {
+		var dashboard = $("#Dashboard");
+		core = dashboard ? dashboard.FindChildInLayoutFile("DashboardCore") : null;
+	}
+	if (!core) {
+		if (!ShowMMR_ProfileLoggedNoCore) {
+			ShowMMR_ProfileLoggedNoCore = true;
+			ShowMMR_ProfileDebug("profile: DashboardCore not found");
+		}
+		return null;
+	}
 
 	core.Data.ShowMMR = core.Data.ShowMMR || {};
 	if (core.Data.ShowMMR.show == null) core.Data.ShowMMR.show = {};
@@ -70,7 +87,7 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 
 	var root = ShowMMR_ProfileRoot();
 	var data = ShowMMR_ProfileData(root);
-	if (!data || data.history == null) return;
+	if (!data) return;
 
 	var gameType = entry.FindChildrenWithClassTraverse("GameTypeColumn");
 	var result = entry.FindChildrenWithClassTraverse("ResultColumn");
@@ -78,6 +95,7 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 	var time = entry.FindChildrenWithClassTraverse("TimestampTime");
 	var duration = entry.FindChildrenWithClassTraverse("DurationColumn");
 	if (!gameType || !result || !date || !time || !duration) return;
+	if (!gameType[0] || !result[0] || !date[0] || !time[0] || !duration[0]) return;
 
 	data._ranked = data._ranked || $.Localize("#dota_lobby_type_competitive");
 	var typeText = gameType[0].text;
@@ -89,9 +107,14 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 	var stamp = "E" + (stampDate + time[0].text + duration[0].text).replace(/\D/g, "");
 	var found = data.show[stamp];
 	var epoch = ShowMMR_ProfileEpoch(entry, stampDate, time[0].text, duration[0].text, found);
+	if (data.PendingProfileMMR > 0 && !data.PendingProfileCaptureSent) {
+		data.PendingProfileCaptureSent = true;
+		ShowMMR_ProfileDebug("profile: sending mmr=" + data.PendingProfileMMR + " time=" + epoch);
+		ShowMMR_SendRefresh(data.PendingProfileMMR, epoch);
+	}
 
 	if (!found) {
-		var known = data.history[epoch];
+		var known = data.history ? data.history[epoch] : null;
 		found = {
 			label: "",
 			epoch: epoch,
@@ -100,7 +123,7 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 		};
 		data.show[stamp] = found;
 	} else {
-		var updated = data.history[epoch];
+		var updated = data.history ? data.history[epoch] : null;
 		if (updated && (found.mmr !== updated[0] || found.shift !== updated[1])) {
 			found.mmr = updated[0];
 			found.shift = updated[1];
@@ -129,7 +152,16 @@ var ShowMMR_ProfileScanRows = function () {
 	if (!ShowMMR_ProfileScannerRunning) return;
 
 	var root = ShowMMR_ProfileRoot();
-	var rows = root.FindChildrenWithClassTraverse("RecentGame") || [];
+	var data = ShowMMR_ProfileData(root);
+	if (data) ShowMMR_ProfileCaptureFromOpenPage(root, data);
+
+	var table = root.FindChildTraverse("RecentGamesTable");
+	var rows = table ? table.FindChildrenWithClassTraverse("RecentGame") : root.FindChildrenWithClassTraverse("RecentGame");
+	rows = rows || [];
+	if (!ShowMMR_ProfileLoggedRows && rows.length > 0) {
+		ShowMMR_ProfileLoggedRows = true;
+		ShowMMR_ProfileDebug("profile: rows=" + rows.length);
+	}
 	for (var i = 0; i < rows.length; i++) ShowMMR_ProfileRecentGames(rows[i]);
 
 	$.Schedule(1.0, function () {
@@ -144,16 +176,20 @@ var ShowMMR_ProfileStartScanner = function () {
 	ShowMMR_ProfileScanRows();
 };
 
-var ShowMMR_SendRefresh = function (mmr) {
+var ShowMMR_SendRefresh = function (mmr, time) {
 	if (mmr < 0 || typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return;
 
-	GameEvents.SendCustomGameEventToServer("ShowMMR_Refresh", {mmr: mmr});
+	var payload = {mmr: mmr};
+	if (time > 0) payload.time = time;
+	GameEvents.SendCustomGameEventToServer("ShowMMR_Refresh", payload);
 };
 
 var ShowMMR_ProfileReadMMR = function (root) {
-	if (!root.BHasClass("MMRCalibrated")) return -1;
+	var label = root.FindChildTraverse("MMRNumber");
+	var text = label ? label.text : "";
+	if (!text || text.charAt(0) === "#") text = $.Localize("#ranked_mmr_value", label || root);
 
-	return parseInt($.Localize("#ranked_mmr_value", root).replace(/\D+/g, ""), 10) || -1;
+	return parseInt(text.replace(/\D+/g, ""), 10) || -1;
 };
 
 var ShowMMR_ProfileCaptureFromOpenPage = function (root, data) {
@@ -166,29 +202,30 @@ var ShowMMR_ProfileCaptureFromOpenPage = function (root, data) {
 	if (mmr < 0) return;
 
 	data.LastProfileCaptureAt = now;
-	ShowMMR_SendRefresh(mmr);
+	data.PendingProfileMMR = mmr;
+	data.PendingProfileCaptureSent = false;
 };
 
 var ShowMMR_ProfileValue = function () {
 	var root = ShowMMR_ProfileRoot();
 	var data = ShowMMR_ProfileData(root);
 	if (!data) return;
+	if (!ShowMMR_ProfileLoggedInit) {
+		ShowMMR_ProfileLoggedInit = true;
+		ShowMMR_ProfileDebug("profile: loaded");
+	}
 
-	ShowMMR_ProfileStartScanner();
 	ShowMMR_ProfileCaptureFromOpenPage(root, data);
+	ShowMMR_ProfileStartScanner();
 
 	if (!data.Refreshing) return;
 
-	$.DispatchEvent("DOTAProfileHeroStatsTab", 1);
-
 	data.mmr = -1;
-	root.style.visibility = "collapse";
 	data.mmr = ShowMMR_ProfileReadMMR(root);
 
 	if (data.mmr > -1 || --data.retries < 1) {
 		data.retries = -1;
-		root.style.visibility = "visible";
-		ShowMMR_SendRefresh(data.mmr);
+		ShowMMR_ProfileCaptureFromOpenPage(root, data);
 		$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 		data.Refreshing = false;
 		$.DispatchEvent("DOTANavigateBack", root);
