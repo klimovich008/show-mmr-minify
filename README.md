@@ -116,9 +116,9 @@ profile history row is attached.
 - If no rows change, the mod probably has no stored history for those matches.
   Open Profile -> History -> Match History once so the profile scanner can bind
   the current MMR to the newest ranked row.
-- If logs say `load bindings path=none` or history stays empty after restart,
-  copy the Steam userdata `user_keys_0_slot3.vcfg` file to Dota's
-  `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
+- If logs load an old `cfg/user_keys_<account_id>_slot3.vcfg` and history is
+  stale after restart, copy the Steam userdata `user_keys_0_slot3.vcfg` file to
+  Dota's `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
 - For live debugging, Dota's console log should contain lines starting with
   `[ShowMMR] base:`, `[ShowMMR] pregame:`, `[ShowMMR] postgame:`,
   `[ShowMMR] profile:`, and `[ShowMMR] refresh`.

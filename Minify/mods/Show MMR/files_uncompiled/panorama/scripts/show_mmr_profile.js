@@ -235,7 +235,8 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 
 	var latest = ShowMMR_ProfileLatestKnown(data);
 	if (row.epoch <= latest.epoch) return;
-	if (data.LastAttachedEpoch === row.epoch && data.LastAttachedMMR === mmr) return;
+	var now = ShowMMR_ProfileNow();
+	if (data.LastAttachedEpoch === row.epoch && data.LastAttachedMMR === mmr && now - (data.LastAttachedAt || 0) < 10) return;
 
 	var pendingMMR = ShowMMR_ProfileToNumber(data.PendingStartMMR, 0);
 	var hasPending = pendingMMR > 0 && data.PendingProcessed !== 1;
@@ -248,6 +249,7 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 	var change = mmr - baseline;
 	data.LastAttachedEpoch = row.epoch;
 	data.LastAttachedMMR = mmr;
+	data.LastAttachedAt = now;
 	data.PendingProcessed = 1;
 	ShowMMR_ProfileDebug(
 		"profile: attach newest epoch=" + row.epoch +
@@ -282,7 +284,11 @@ var ShowMMR_ProfileScanRows = function () {
 	var newestRanked = null;
 	for (var i = 0; i < rows.length; i++) {
 		var row = ShowMMR_ProfileRecentGames(rows[i]);
-		if (!newestRanked && row && row.isRanked) newestRanked = row;
+		if (row && row.isRanked && row.epoch > 0 && (!newestRanked || row.epoch > newestRanked.epoch)) newestRanked = row;
+	}
+	if (data && newestRanked && data.LastCandidateEpoch !== newestRanked.epoch) {
+		data.LastCandidateEpoch = newestRanked.epoch;
+		ShowMMR_ProfileDebug("profile: newest ranked candidate epoch=" + newestRanked.epoch + " known=" + (newestRanked.known ? 1 : 0));
 	}
 	if (data) ShowMMR_ProfileAttachNewest(data, newestRanked, root);
 
