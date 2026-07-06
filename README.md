@@ -48,15 +48,16 @@ userdata:
 C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
-The VScript loader reads the same data from Dota's game cfg search path:
+The VScript loader reads the same data from Dota's account-specific game cfg
+search path:
 
 ```text
 <dota 2 beta>\game\dota\cfg\user_keys_<account_id>_slot3.vcfg
 ```
 
-For the current test account, that file was seeded from Steam userdata because
-this Dota build did not expose `cfg/user_keys_<account_id>_slot3.vcfg` until it
-existed in the game cfg folder.
+Seed one file per Dota account. The mod intentionally does not read the shared
+`cfg/user_keys_0_slot3.vcfg` fallback because it can leak another account's MMR
+history into a fresh account.
 
 ## Usage
 
@@ -116,9 +117,9 @@ profile history row is attached.
 - If no rows change, the mod probably has no stored history for those matches.
   Open Profile -> History -> Match History once so the profile scanner can bind
   the current MMR to the newest ranked row.
-- If logs load an old `cfg/user_keys_<account_id>_slot3.vcfg` and history is
-  stale after restart, copy the Steam userdata `user_keys_0_slot3.vcfg` file to
-  Dota's `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
+- If logs say `load bindings path=none` or history is stale after restart, copy
+  that account's Steam userdata `user_keys_0_slot3.vcfg` file to Dota's
+  `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
 - For live debugging, Dota's console log should contain lines starting with
   `[ShowMMR] base:`, `[ShowMMR] pregame:`, `[ShowMMR] postgame:`,
   `[ShowMMR] profile:`, and `[ShowMMR] refresh`.

@@ -61,8 +61,7 @@ function ShowMMR:Init(e)
 
 	local data_file, data_path = nil, nil
 	local data_paths = {
-		'cfg/user_keys_' .. self.user .. '_slot3.vcfg',
-		'cfg/user_keys_0_slot3.vcfg'
+		'cfg/user_keys_' .. self.user .. '_slot3.vcfg'
 	}
 	for _, path in ipairs(data_paths) do
 		data_file = LoadKeyValues(path)
