@@ -48,8 +48,12 @@ var ShowMMR_LoadHistory = function (data) {
 	});
 };
 
+var ShowMMR_IsDashboard = function () {
+	return typeof GameUI === "undefined" || !GameUI.GetDotaGameUIState || GameUI.GetDotaGameUIState() === 3;
+};
+
 var ShowMMR_GameUIStateChanged = function (oldState, newState) {
-	if (oldState !== 1 || newState !== 3) return;
+	if (newState !== 3) return;
 
 	var data = ShowMMR_GetData();
 	if (!data) return;
@@ -57,11 +61,16 @@ var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	if (data.show == null) data.show = {};
 	ShowMMR_LoadHistory(data);
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
+
+	if (oldState !== 1 && oldState !== 3) {
+		$.Schedule(20.0, ShowMMR_Refresh);
+	}
 };
 
 var ShowMMR_Refresh = function () {
 	var data = ShowMMR_GetData();
 	if (!data || data.Refreshing) return;
+	if (!ShowMMR_IsDashboard()) return;
 
 	var now = Date.now ? Date.now() : (new Date()).getTime();
 	if (data.StartupGraceUntil && now < data.StartupGraceUntil) return;
