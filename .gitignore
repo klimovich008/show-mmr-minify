@@ -1,0 +1,8 @@
+*.log
+*.tmp
+*.bak
+*.mdmp
+.built-*/
+.current-dota/
+.patched-current/
+user_keys_*_slot3.vcfg

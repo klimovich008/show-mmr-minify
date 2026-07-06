@@ -1,0 +1,41 @@
+{
+  "panorama/layout/base.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_base.vjs_c"
+    },
+    {
+      "action": "add_child",
+      "selector": "Panel.WindowRoot",
+      "xml": "<Panel id='ShowMMRBootstrap' hittest='false' onload='ShowMMR_Init()' />"
+    }
+  ],
+  "panorama/layout/dashboard_page_profile_hero_stats.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_profile.vjs_c"
+    },
+    {
+      "action": "add_child",
+      "selector": "DOTAProfileHeroStatsPage",
+      "xml": "<Panel id='ShowMMRProfileBootstrap' hittest='false' onload='ShowMMR_ProfileValue()' />"
+    },
+    {
+      "action": "set_attribute",
+      "selector": "Panel.RecentGame",
+      "attribute": "onload",
+      "value": "ShowMMR_ProfileRecentGames()"
+    }
+  ],
+  "panorama/layout/dashboard_background_last_match.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_last_match.vjs_c"
+    },
+    {
+      "action": "add_child",
+      "selector": "DOTADashboardBackgroundLastMatch",
+      "xml": "<Panel id='ShowMMRLastMatchBootstrap' hittest='false' onload='ShowMMR_LastMatchInit()' />"
+    }
+  ]
+}
