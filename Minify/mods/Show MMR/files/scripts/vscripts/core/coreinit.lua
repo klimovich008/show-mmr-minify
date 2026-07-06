@@ -4,6 +4,46 @@ if not IsServer() then return end
 
 if ShowMMR == nil then ShowMMR = class({}) end
 
+function ShowMMR:LoadPending(value)
+	if value == nil then return end
+
+	local mmr, at, match_id, processed = tostring(value):match('^showmmr_pending:(%d+):(%d+):(%d*):(%d+)$')
+	if mmr == nil then return end
+
+	self.pending = {
+		mmr = tonumber(mmr) or 0,
+		at = tonumber(at) or 0,
+		match_id = match_id ~= '' and match_id or '0',
+		processed = tonumber(processed) or 0
+	}
+end
+
+function ShowMMR:PublishPending()
+	self.pending = self.pending or {mmr = 0, at = 0, match_id = '0', processed = 1}
+	if CustomNetTables then
+		CustomNetTables:SetTableValue('ShowMMR_pending', 'state', {
+			mmr = self.pending.mmr or 0,
+			at = self.pending.at or 0,
+			match_id = tostring(self.pending.match_id or '0'),
+			processed = self.pending.processed or 0
+		})
+	end
+end
+
+function ShowMMR:SavePending()
+	if self.pending_bind == nil then self.pending_bind = 'JOY32' end
+	self.pending = self.pending or {mmr = 0, at = 0, match_id = '0', processed = 1}
+
+	local value = 'showmmr_pending:' ..
+		tostring(tonumber(self.pending.mmr) or 0) .. ':' ..
+		tostring(tonumber(self.pending.at) or 0) .. ':' ..
+		tostring(self.pending.match_id or '0') .. ':' ..
+		tostring(tonumber(self.pending.processed) or 0)
+	print('[ShowMMR] pending save ' .. value)
+	SendToServerConsole('bindss 3 ' .. self.pending_bind .. ' "' .. value .. '";')
+	SendToServerConsole('writekeybindings | grep % ^;')
+end
+
 function ShowMMR:Init(e)
 	if GameRules then return end
 
@@ -11,13 +51,27 @@ function ShowMMR:Init(e)
 	self.data = self.data or {}
 	self.matches = self.matches or {}
 	self.history = self.history or {}
+	self.pending = self.pending or {mmr = 0, at = 0, match_id = '0', processed = 1}
+	self.pending_bind = 'JOY32'
 
 	if self.bind == nil then
 		self.bind = {}
-		for i = 1, 32 do table.insert(self.bind, 'JOY' .. i) end
+		for i = 1, 31 do table.insert(self.bind, 'JOY' .. i) end
 	end
 
-	local data_file = LoadKeyValues('cfg/user_keys_' .. self.user .. '_slot3.vcfg')
+	local data_file, data_path = nil, nil
+	local data_paths = {
+		'cfg/user_keys_' .. self.user .. '_slot3.vcfg',
+		'cfg/user_keys_0_slot3.vcfg'
+	}
+	for _, path in ipairs(data_paths) do
+		data_file = LoadKeyValues(path)
+		if data_file ~= nil then
+			data_path = path
+			break
+		end
+	end
+	print('[ShowMMR] load bindings path=' .. tostring(data_path or 'none'))
 	if data_file ~= nil and data_file.bindings ~= nil then
 		local list = {}
 		for _, hotkey in ipairs(self.bind) do
@@ -30,6 +84,7 @@ function ShowMMR:Init(e)
 			self.data = json.decode('{' .. table.concat(list, ',') .. '}') or {}
 			vlua.tableadd(self.history, self.data)
 		end
+		self:LoadPending(data_file.bindings[self.pending_bind])
 	end
 
 	if data_file ~= nil and data_file.matches ~= nil then
@@ -52,6 +107,11 @@ function ShowMMR:Init(e)
 		end
 	end
 	CustomNetTables:SetTableValue('ShowMMR_history', 'kv', kv)
+	self:PublishPending()
+
+	local history_count = 0
+	for _ in pairs(self.history) do history_count = history_count + 1 end
+	print('[ShowMMR] init user=' .. tostring(self.user) .. ' history=' .. tostring(history_count) .. ' pending_mmr=' .. tostring(self.pending.mmr) .. ' pending_match_id=' .. tostring(self.pending.match_id))
 
 	if self.cfg == nil then
 		self.cfg = {}
@@ -70,8 +130,38 @@ function ShowMMR:Init(e)
 
 		if CustomGameEventManager then
 			CustomGameEventManager:RegisterListener('ShowMMR_Refresh', function(...) return ShowMMR:Refresh(...) end)
+			CustomGameEventManager:RegisterListener('ShowMMR_Pending', function(...) return ShowMMR:Pending(...) end)
+			CustomGameEventManager:RegisterListener('ShowMMR_PostGame', function(...) return ShowMMR:PostGame(...) end)
 		end
 	end
+end
+
+function ShowMMR:Pending(_, e)
+	if e == nil then return end
+
+	self.pending = self.pending or {mmr = 0, at = 0, match_id = '0', processed = 1}
+	local mmr = tonumber(e.mmr) or 0
+	if mmr > 0 then self.pending.mmr = mmr end
+	if self.pending.mmr == nil then self.pending.mmr = 0 end
+
+	local at = tonumber(e.at) or 0
+	if at > 0 then self.pending.at = at end
+	if e.match_id ~= nil and tostring(e.match_id) ~= '' and tostring(e.match_id) ~= '0' then
+		self.pending.match_id = tostring(e.match_id)
+	end
+	self.pending.processed = 0
+
+	print('[ShowMMR] pending reason=' .. tostring(e.reason or 'unknown') .. ' mmr=' .. tostring(self.pending.mmr) .. ' match_id=' .. tostring(self.pending.match_id) .. ' at=' .. tostring(self.pending.at))
+	self:PublishPending()
+	self:SavePending()
+end
+
+function ShowMMR:PostGame(_, e)
+	if e == nil then return end
+
+	e.reason = 'postgame'
+	self:Pending(nil, e)
+	print('[ShowMMR] postgame match_id=' .. tostring(e.match_id or '0'))
 end
 
 function ShowMMR:Refresh(_, e)
@@ -81,10 +171,19 @@ function ShowMMR:Refresh(_, e)
 	if self.mmr < 0 then return end
 
 	local manual_time = tonumber(e.time) or 0
-	print('[ShowMMR] refresh mmr=' .. tostring(self.mmr) .. ' time=' .. tostring(manual_time))
+	local manual_change = e.change ~= nil and tonumber(e.change) or nil
+	print('[ShowMMR] refresh mmr=' .. tostring(self.mmr) .. ' time=' .. tostring(manual_time) .. ' change=' .. tostring(manual_change))
 	if manual_time > 0 then
 		self.cfg.recent_game_time_1 = tostring(manual_time)
+		self.manual_change = manual_change
 		self:Save({round_name = 'cfg_updated'})
+		self.manual_change = nil
+
+		self.pending = self.pending or {}
+		self.pending.mmr = self.mmr
+		self.pending.processed = 1
+		self:PublishPending()
+		self:SavePending()
 		return
 	end
 
@@ -101,7 +200,11 @@ function ShowMMR:Save(e)
 
 	if time_1 ~= nil and rank_1 > 0 and (find_1 == nil or find_1[1] == 0 or find_1[2] == 0) then
 		local change, t = 0, tonumber(time_1)
-		if find_2 ~= nil and find_2[1] > 0 then change = rank_1 - find_2[1] end
+		if self.manual_change ~= nil then
+			change = self.manual_change
+		elseif find_2 ~= nil and find_2[1] > 0 then
+			change = rank_1 - find_2[1]
+		end
 		vlua.tableadd(self.data, {[t] = {rank_1, change}})
 		vlua.tableadd(self.history, {[t] = {rank_1, change}})
 		CustomNetTables:SetTableValue('ShowMMR_update', ' ' .. time_1, {rank_1, change})

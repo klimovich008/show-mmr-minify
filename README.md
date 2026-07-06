@@ -32,15 +32,31 @@ badge with the MMR change when that match is known.
 - Panorama reads the visible ranked MMR value from your local profile page.
 - VScript stores recent ranked MMR history in Dota's local controller slot 3
   keybind file, using the original ShowMMR storage trick.
+- `JOY32` is reserved for a pending snapshot, so the mod can remember the last
+  known MMR when Dota leaves the dashboard and attach it to the newest ranked
+  row after postgame/history loads.
 - The profile match-history page is scanned while it is open, so if Dota reloads
   the rows the MMR labels are applied again.
 - Normal matches without known stored MMR data stay unchanged.
+- Console logging is intentionally verbose while this port is being stabilized:
+  search `console.log` for `[ShowMMR]`.
 
-The local storage file is account-specific and lives under Steam userdata:
+The local storage file Dota writes is account-specific and lives under Steam
+userdata:
 
 ```text
 C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
+
+The VScript loader reads the same data from Dota's game cfg search path:
+
+```text
+<dota 2 beta>\game\dota\cfg\user_keys_<account_id>_slot3.vcfg
+```
+
+For the current test account, that file was seeded from Steam userdata because
+this Dota build did not expose `cfg/user_keys_<account_id>_slot3.vcfg` until it
+existed in the game cfg folder.
 
 ## Usage
 
@@ -80,6 +96,15 @@ The key is the match timestamp epoch. The value is `[mmr,change]`. Start Dota,
 open your profile match history, and matching ranked rows should show the seeded
 MMR values.
 
+The pending marker uses `JOY32` and looks like:
+
+```text
+"JOY32" "showmmr_pending:7539:1783336560:8883733433:0"
+```
+
+Fields are `mmr:epoch:match_id:processed`. `processed` becomes `1` after the
+profile history row is attached.
+
 ## Troubleshooting
 
 - If the mod does not appear, confirm `Show MMR` is enabled in Minify and click
@@ -91,8 +116,12 @@ MMR values.
 - If no rows change, the mod probably has no stored history for those matches.
   Open Profile -> History -> Match History once so the profile scanner can bind
   the current MMR to the newest ranked row.
+- If logs say `load bindings path=none` or history stays empty after restart,
+  copy the Steam userdata `user_keys_0_slot3.vcfg` file to Dota's
+  `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
 - For live debugging, Dota's console log should contain lines starting with
-  `[ShowMMR] profile:` and `[ShowMMR] refresh`.
+  `[ShowMMR] base:`, `[ShowMMR] pregame:`, `[ShowMMR] postgame:`,
+  `[ShowMMR] profile:`, and `[ShowMMR] refresh`.
 - If Dota changes private dashboard XML, profile selectors, or
   `dota_game_account_client_debug`, the mod may need another update.
 

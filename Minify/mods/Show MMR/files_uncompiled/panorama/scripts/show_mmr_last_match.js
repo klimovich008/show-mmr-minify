@@ -1,6 +1,11 @@
 "use strict";
 
 var ShowMMR_LastMatchPanel = null;
+var ShowMMR_LastLoggedNoCore = false;
+
+var ShowMMR_LastDebug = function (message) {
+	$.Msg("[ShowMMR] " + message);
+};
 
 var ShowMMR_LastRoot = function () {
 	if (ShowMMR_LastMatchPanel) return ShowMMR_LastMatchPanel;
@@ -12,7 +17,13 @@ var ShowMMR_LastRoot = function () {
 
 var ShowMMR_LastData = function (root) {
 	var core = root.FindAncestor("DashboardCore");
-	if (!core) return null;
+	if (!core) {
+		if (!ShowMMR_LastLoggedNoCore) {
+			ShowMMR_LastLoggedNoCore = true;
+			ShowMMR_LastDebug("last_match: DashboardCore not found");
+		}
+		return null;
+	}
 
 	core.Data.ShowMMR = core.Data.ShowMMR || {};
 	if (core.Data.ShowMMR.show == null) core.Data.ShowMMR.show = {};
@@ -68,7 +79,10 @@ var ShowMMR_LastEpoch = function (panel, dateText, found) {
 var ShowMMR_LastMatchUpdated = function () {
 	var root = ShowMMR_LastRoot();
 	var data = ShowMMR_LastData(root);
-	if (!data || data.history == null || data.Refreshing_Last) return;
+	if (!data || data.history == null || data.Refreshing_Last) {
+		if (!data || data.history == null) ShowMMR_LastDebug("last_match: waiting for history");
+		return;
+	}
 
 	data.Refreshing_Last = true;
 
@@ -94,6 +108,7 @@ var ShowMMR_LastMatchUpdated = function () {
 		var loss = root.FindChildTraverse("Loss");
 		if (win) win.text = numbers;
 		if (loss) loss.text = numbers;
+		ShowMMR_LastDebug("last_match: applied epoch=" + epoch + " change=" + numbers);
 	}
 
 	data.Refreshing_Last = false;
@@ -104,6 +119,7 @@ var ShowMMR_LastMatchInit = function () {
 	ShowMMR_LastMatchPanel = root;
 	var data = ShowMMR_LastData(root);
 	if (!data) return;
+	ShowMMR_LastDebug("last_match: loaded");
 
 	if (!data.LastMatchInstalled) {
 		data.LastMatchInstalled = true;
