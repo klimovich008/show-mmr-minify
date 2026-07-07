@@ -58,8 +58,7 @@ search path:
 The mod also accepts `cfg/user_keys_0_slot3.vcfg` when it contains a
 same-account `showmmr_pending_v2` marker written by this mod. Unmarked shared
 slot files are ignored so another account's MMR history cannot leak into a
-fresh account. Empty binding files are skipped during load instead of being
-treated as valid saved state.
+fresh account.
 
 ## Binding Storage Findings
 
@@ -75,12 +74,10 @@ as a small persistent key-value store:
 A stored history record currently looks like:
 
 ```text
-showmmr_history:1783404065:[7657,38]
+1783404065:[7657,38]
 ```
 
-The `showmmr_history:` prefix keeps the binding value command-like for Dota,
-while the payload stays readable. Older raw values without the prefix are still
-accepted by the loader.
+That format is intentionally readable and conservative, but not space optimal.
 
 Local inspection showed Dota creates these user key files:
 
@@ -212,7 +209,7 @@ Example:
 {
 	"bindings"
 	{
-		"JOY1" "showmmr_history:1700000000:[6000,25],1699996400:[5975,-25]"
+		"JOY1" "1700000000:[6000,25],1699996400:[5975,-25]"
 	}
 }
 ```
@@ -241,8 +238,6 @@ after the profile history row is attached.
 - If no rows change, the mod probably has no stored history for those matches.
   Open Profile -> History -> Match History once so the profile scanner can bind
   the current MMR to the newest ranked row.
-- If logs say `ignore empty bindings`, Dota has an empty `user_keys` file in
-  the search path; the loader skipped it and tried the next candidate.
 - `Script failed to LoadKeyValues cfg/user_keys_<account_id>_slot3.vcfg` is
   normal on a fresh account before any ShowMMR history exists.
 - If logs say `ignore shared bindings`, the shared slot belongs to another
