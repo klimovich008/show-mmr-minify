@@ -58,6 +58,25 @@ function ShowMMR:SavePending()
 	SendToServerConsole('writekeybindings | grep % ^;')
 end
 
+function ShowMMR:DecodeHistoryBinding(value)
+	if value == nil then return nil end
+
+	value = tostring(value)
+	if value:sub(1, 16) == 'showmmr_history:' then value = value:sub(17) end
+	if value:sub(11, 11) == ':' and value:sub(12, 12) == '[' then return value end
+	return nil
+end
+
+function ShowMMR:HasStoredBindings(bindings)
+	if bindings == nil then return false end
+	if tostring(bindings[self.pending_bind] or ''):match('^showmmr_pending') then return true end
+
+	for _, hotkey in ipairs(self.bind or {}) do
+		if self:DecodeHistoryBinding(bindings[hotkey]) ~= nil then return true end
+	end
+	return false
+end
+
 function ShowMMR:Init(e)
 	if GameRules then return end
 
@@ -79,25 +98,33 @@ function ShowMMR:Init(e)
 		{path = 'cfg/user_keys_0_slot3.vcfg', shared = true}
 	}
 	for _, candidate in ipairs(data_paths) do
-		data_file = LoadKeyValues(candidate.path)
-		if data_file ~= nil then
-			data_path = candidate.path
-			if candidate.shared and data_file.bindings ~= nil then
-				local pending_user = tostring(data_file.bindings[self.pending_bind] or ''):match('^showmmr_pending_v2:(%d+):')
+		local candidate_file = LoadKeyValues(candidate.path)
+		if candidate_file ~= nil then
+			local bindings = candidate_file.bindings
+			if not self:HasStoredBindings(bindings) then
+				print('[ShowMMR] ignore empty bindings path=' .. candidate.path)
+			elseif candidate.shared then
+				local pending_user = tostring(bindings[self.pending_bind] or ''):match('^showmmr_pending_v2:(%d+):')
 				if tostring(pending_user or '') ~= tostring(self.user) then
-					print('[ShowMMR] ignore shared bindings path=' .. data_path .. ' user=' .. tostring(pending_user or 'none'))
-					data_file = nil
+					print('[ShowMMR] ignore shared bindings path=' .. candidate.path .. ' user=' .. tostring(pending_user or 'none'))
+				else
+					data_file = candidate_file
+					data_path = candidate.path
+					break
 				end
+			else
+				data_file = candidate_file
+				data_path = candidate.path
+				break
 			end
-			if data_file ~= nil then break end
 		end
 	end
 	print('[ShowMMR] load bindings path=' .. tostring(data_path or 'none'))
 	if data_file ~= nil and data_file.bindings ~= nil then
 		local list = {}
 		for _, hotkey in ipairs(self.bind) do
-			local val = data_file.bindings[hotkey]
-			if val ~= nil and val:sub(11, 11) == ':' and val:sub(12, 12) == '[' then
+			local val = self:DecodeHistoryBinding(data_file.bindings[hotkey])
+			if val ~= nil then
 				table.insert(list, val)
 			end
 		end
@@ -263,7 +290,7 @@ function ShowMMR:Save(e)
 			line = line + 1
 			text = text .. ',' .. v .. ':[' .. self.data[v][1] .. ',' .. self.data[v][2] .. ']'
 			if line == remain or line == math.min(20, remain) then
-				SendToServerConsole('bindss 3 ' .. self.bind[pages] .. ' "' .. text:sub(2) .. '";')
+				SendToServerConsole('bindss 3 ' .. self.bind[pages] .. ' "showmmr_history:' .. text:sub(2) .. '";')
 				remain = remain - line
 				line = 0
 				pages = pages + 1

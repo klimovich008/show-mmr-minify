@@ -8,7 +8,7 @@ param(
 )
 
 $joyLine = '^\s*"JOY([1-9]|[12][0-9]|3[0-2])"\s+"([^"]*)"\s*$'
-$showMmrValue = '^(showmmr_pending(_v2)?:|[0-9]{8,}:\[[0-9-]+,[0-9-]+\](,[0-9]{8,}:\[[0-9-]+,[0-9-]+\])*)'
+$showMmrValue = '^(showmmr_pending(_v2)?:|showmmr_history:|[0-9]{8,}:\[[0-9-]+,[0-9-]+\](,[0-9]{8,}:\[[0-9-]+,[0-9-]+\])*)'
 $backupRoot = Join-Path (Get-Location) ("showmmr_backup_" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
 $filesChanged = 0
