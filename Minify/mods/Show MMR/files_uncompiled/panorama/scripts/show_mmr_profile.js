@@ -242,16 +242,7 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 		" latest_epoch=" + latest.epoch +
 		" latest_mmr=" + latest.mmr
 	);
-	if (!ShowMMR_SendRefresh(mmr, row.epoch, change)) return;
-
-	data.history = data.history || {};
-	data.history[row.epoch] = [mmr, change];
-	data.historyReady = true;
-	row.found.mmr = mmr;
-	row.found.shift = change;
-	row.known = data.history[row.epoch];
-	ShowMMR_ProfileApplyLabel(row.entry, row.result, data, row.found);
-	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
+	ShowMMR_SendRefresh(mmr, row.epoch, change);
 };
 
 var ShowMMR_ProfileScanRows = function () {
