@@ -32,6 +32,27 @@ var ShowMMR_SendEvent = function (name, payload) {
 	return true;
 };
 
+var ShowMMR_Console = function (command) {
+	if (typeof GameInterfaceAPI === "undefined" || !GameInterfaceAPI.ConsoleCommand) return false;
+	GameInterfaceAPI.ConsoleCommand(command);
+	return true;
+};
+
+var ShowMMR_SavePendingBinding = function (payload, processed) {
+	var value = "showmmr_pending:" +
+		String(ShowMMR_ToNumber(payload.mmr, 0)) + ":" +
+		String(ShowMMR_ToNumber(payload.at, 0)) + ":" +
+		String(payload.match_id || "0") + ":" +
+		String(processed || 0);
+
+	if (!ShowMMR_Console('bindss 3 JOY32 "' + value + '"')) {
+		ShowMMR_Debug("base: pending bind save unavailable");
+		return;
+	}
+	ShowMMR_Console("writekeybindings");
+	ShowMMR_Debug("base: pending bind save " + value);
+};
+
 var ShowMMR_ApplyPending = function (data, pending) {
 	if (!data || !pending) return;
 
@@ -116,6 +137,7 @@ var ShowMMR_MarkPending = function (reason) {
 	data.PendingStartedAt = payload.at;
 	data.PendingProcessed = 0;
 	ShowMMR_Debug("base: pending reason=" + payload.reason + " mmr=" + payload.mmr + " match_id=" + (payload.match_id || "0"));
+	ShowMMR_SavePendingBinding(payload, 0);
 	ShowMMR_SendEvent("ShowMMR_Pending", payload);
 };
 

@@ -199,6 +199,61 @@ var ShowMMR_SendRefresh = function (mmr, time, change) {
 	GameEvents.SendCustomGameEventToServer("ShowMMR_Refresh", payload);
 };
 
+var ShowMMR_ProfileConsole = function (command) {
+	if (typeof GameInterfaceAPI === "undefined" || !GameInterfaceAPI.ConsoleCommand) return false;
+	GameInterfaceAPI.ConsoleCommand(command);
+	return true;
+};
+
+var ShowMMR_ProfileRecordValue = function (value, index, fallback) {
+	if (!value) return fallback;
+	if (typeof value[index] !== "undefined") return ShowMMR_ProfileToNumber(value[index], fallback);
+	return ShowMMR_ProfileToNumber(value[String(index + 1)], fallback);
+};
+
+var ShowMMR_ProfileSaveBindings = function (data, epoch, mmr, change) {
+	if (!data || epoch <= 0 || mmr < 0) return;
+	if (!ShowMMR_ProfileConsole('bindss 3 JOY32 "showmmr_pending:' + mmr + ':' + ShowMMR_ProfileNow() + ':' + (data.PendingMatchId || "0") + ':1"')) {
+		ShowMMR_ProfileDebug("profile: binding save unavailable");
+		return;
+	}
+
+	data.history = data.history || {};
+	data.history[epoch] = [mmr, change];
+
+	var ordered = [];
+	for (var key in data.history) {
+		if (!Object.prototype.hasOwnProperty.call(data.history, key)) continue;
+		var parsed = parseInt(key, 10);
+		if (parsed > 0) ordered.push(parsed);
+	}
+	ordered.sort(function (a, b) { return b - a; });
+
+	var remain = ordered.length;
+	var pages = 1;
+	var line = 0;
+	var text = "";
+	for (var i = 0; i < ordered.length && pages <= 31; i++) {
+		var itemEpoch = ordered[i];
+		var value = data.history[itemEpoch];
+		var itemMMR = ShowMMR_ProfileRecordValue(value, 0, -1);
+		var itemChange = ShowMMR_ProfileRecordValue(value, 1, -1);
+		if (itemMMR < 0 || itemChange < -9999) continue;
+
+		line++;
+		text += "," + itemEpoch + ":[" + itemMMR + "," + itemChange + "]";
+		if (line === remain || line === Math.min(20, remain)) {
+			ShowMMR_ProfileConsole('bindss 3 JOY' + pages + ' "' + text.substring(1) + '"');
+			remain -= line;
+			line = 0;
+			pages++;
+			text = "";
+		}
+	}
+	ShowMMR_ProfileConsole("writekeybindings");
+	ShowMMR_ProfileDebug("profile: binding save entries=" + ordered.length + " latest=" + epoch);
+};
+
 var ShowMMR_ProfileReadMMR = function (root) {
 	var label = root.FindChildTraverse("MMRNumber");
 	var text = label ? label.text : "";
@@ -264,6 +319,7 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 		" pending_match_id=" + (data.PendingMatchId || "0")
 	);
 	ShowMMR_SendRefresh(mmr, row.epoch, change);
+	ShowMMR_ProfileSaveBindings(data, row.epoch, mmr, change);
 
 	row.found.mmr = mmr;
 	row.found.shift = change;

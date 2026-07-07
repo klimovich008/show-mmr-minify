@@ -58,6 +58,17 @@ function ShowMMR:SavePending()
 	SendToServerConsole('writekeybindings | grep % ^;')
 end
 
+function ShowMMR:HasStorage(bindings)
+	if bindings == nil then return false end
+	if tostring(bindings[self.pending_bind] or ''):match('^showmmr_pending') then return true end
+
+	for _, hotkey in ipairs(self.bind or {}) do
+		local val = bindings[hotkey]
+		if val ~= nil and val:sub(11, 11) == ':' and val:sub(12, 12) == '[' then return true end
+	end
+	return false
+end
+
 function ShowMMR:Init(e)
 	if GameRules then return end
 
@@ -79,17 +90,24 @@ function ShowMMR:Init(e)
 		{path = 'cfg/user_keys_0_slot3.vcfg', shared = true}
 	}
 	for _, candidate in ipairs(data_paths) do
-		data_file = LoadKeyValues(candidate.path)
-		if data_file ~= nil then
-			data_path = candidate.path
-			if candidate.shared and data_file.bindings ~= nil then
-				local pending_user = tostring(data_file.bindings[self.pending_bind] or ''):match('^showmmr_pending_v2:(%d+):')
-				if tostring(pending_user or '') ~= tostring(self.user) then
-					print('[ShowMMR] ignore shared bindings path=' .. data_path .. ' user=' .. tostring(pending_user or 'none'))
-					data_file = nil
+		local candidate_file = LoadKeyValues(candidate.path)
+		if candidate_file ~= nil then
+			if not self:HasStorage(candidate_file.bindings) then
+				print('[ShowMMR] ignore empty bindings path=' .. candidate.path)
+			elseif candidate.shared then
+				local pending_user = tostring(candidate_file.bindings[self.pending_bind] or ''):match('^showmmr_pending_v2:(%d+):')
+				if pending_user ~= nil and tostring(pending_user) ~= tostring(self.user) then
+					print('[ShowMMR] ignore shared bindings path=' .. candidate.path .. ' user=' .. tostring(pending_user))
+				else
+					data_file = candidate_file
+					data_path = candidate.path
+					break
 				end
+			else
+				data_file = candidate_file
+				data_path = candidate.path
+				break
 			end
-			if data_file ~= nil then break end
 		end
 	end
 	print('[ShowMMR] load bindings path=' .. tostring(data_path or 'none'))
