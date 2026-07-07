@@ -225,11 +225,16 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 	var now = ShowMMR_ProfileNow();
 	if (data.LastAttachedEpoch === row.epoch && data.LastAttachedMMR === mmr && now - (data.LastAttachedAt || 0) < 10) return;
 
-	var change = latest.mmr > 0 && row.epoch > latest.epoch ? mmr - latest.mmr : 0;
+	var hasStoredBaseline = latest.mmr > 0 && row.epoch > latest.epoch;
+	var change = hasStoredBaseline ? mmr - latest.mmr : 0;
 
 	data.LastAttachedEpoch = row.epoch;
 	data.LastAttachedMMR = mmr;
 	data.LastAttachedAt = now;
+	if (hasStoredBaseline && change === 0) {
+		ShowMMR_ProfileDebug("profile: skip newest epoch=" + row.epoch + " mmr=" + mmr + " unchanged latest_epoch=" + latest.epoch);
+		return;
+	}
 	ShowMMR_ProfileDebug(
 		"profile: save newest epoch=" + row.epoch +
 		" mmr=" + mmr +
