@@ -32,9 +32,9 @@ badge with the MMR change when that match is known.
 - Panorama reads the visible ranked MMR value from your local profile page.
 - VScript stores recent ranked MMR history in Dota's local controller slot 3
   keybind file, using the original ShowMMR storage trick.
-- `JOY32` is reserved for a pending snapshot, so the mod can remember the last
-  known MMR when Dota leaves the dashboard and attach it to the newest ranked
-  row after postgame/history loads.
+- Opening the profile match-history page saves the newest ranked row with the
+  current visible MMR. If there is no previous stored row, this becomes a
+  zero-change baseline for the next ranked match.
 - The profile match-history page is scanned while it is open, so if Dota reloads
   the rows the MMR labels are applied again.
 - Normal matches without known stored MMR data stay unchanged.
@@ -48,6 +48,9 @@ userdata:
 C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
+The runtime loader checks that default Steam userdata path first, then falls
+back to Dota's game cfg paths.
+
 The VScript loader reads the same data from Dota's account-specific game cfg
 search path:
 
@@ -55,10 +58,10 @@ search path:
 <dota 2 beta>\game\dota\cfg\user_keys_<account_id>_slot3.vcfg
 ```
 
-The mod also accepts `cfg/user_keys_0_slot3.vcfg` when it contains a
-same-account `showmmr_pending_v2` marker written by this mod. Unmarked shared
-slot files are ignored so another account's MMR history cannot leak into a
-fresh account.
+The mod also accepts `cfg/user_keys_0_slot3.vcfg` when `JOY32` contains the
+same-account `showmmr_user:<account_id>` marker written by this mod. Unmarked
+shared slot files are ignored so another account's MMR history cannot leak into
+a fresh account.
 
 ## Binding Storage Findings
 
@@ -66,9 +69,9 @@ The current mod uses Dota's local `user_keys_*_slot3.vcfg` controller bindings
 as a small persistent key-value store:
 
 - `JOY1` through `JOY31` store ranked MMR history.
-- `JOY32` stores the pending baseline marker.
+- `JOY32` stores the account marker.
 - Each history page currently stores up to 20 match records.
-- Current capacity is about `31 * 20 = 620` match records, plus one pending
+- Current capacity is about `31 * 20 = 620` match records, plus one account
   marker.
 
 A stored history record currently looks like:
@@ -182,9 +185,12 @@ channel.
 
 ## Usage
 
-After a ranked match, open Dota normally, then open Profile -> History -> Match
-History. Once the mod has stored data for a match, known ranked rows show values
-like:
+Before a ranked match, open Profile -> History -> Match History once. This saves
+the current newest ranked row as the baseline. After the ranked match, open the
+same history page again; the newest ranked row should be saved with the MMR
+change from that baseline.
+
+Once the mod has stored data for a match, known ranked rows show values like:
 
 ```text
 6,000 (+25)
@@ -218,14 +224,11 @@ The key is the match timestamp epoch. The value is `[mmr,change]`. Start Dota,
 open your profile match history, and matching ranked rows should show the seeded
 MMR values.
 
-The pending marker uses `JOY32` and looks like:
+The account marker uses `JOY32` and looks like:
 
 ```text
-"JOY32" "showmmr_pending_v2:1665041461:7539:1783336560:8883733433:0"
+"JOY32" "showmmr_user:1665041461"
 ```
-
-Fields are `account_id:mmr:epoch:match_id:processed`. `processed` becomes `1`
-after the profile history row is attached.
 
 ## Troubleshooting
 
@@ -236,16 +239,16 @@ after the profile history row is attached.
 - If labels disappear after refreshing match history, patch again with this
   version; it keeps scanning while the profile page exists.
 - If no rows change, the mod probably has no stored history for those matches.
-  Open Profile -> History -> Match History once so the profile scanner can bind
-  the current MMR to the newest ranked row.
+  Open Profile -> History -> Match History before a ranked match to seed the
+  baseline, then open it again after the match.
 - `Script failed to LoadKeyValues cfg/user_keys_<account_id>_slot3.vcfg` is
   normal on a fresh account before any ShowMMR history exists.
 - If logs say `ignore shared bindings`, the shared slot belongs to another
-  account or an older unmarked build; play one game with this build active or
-  seed the account-specific file manually.
+  account or an older unmarked build; open match history with this build active
+  or seed the account-specific file manually.
 - For live debugging, Dota's console log should contain lines starting with
-  `[ShowMMR] base:`, `[ShowMMR] pregame:`, `[ShowMMR] postgame:`,
-  `[ShowMMR] profile:`, and `[ShowMMR] refresh`.
+  `[ShowMMR] base:`, `[ShowMMR] profile:`, `[ShowMMR] last_match:`, and
+  `[ShowMMR] refresh`.
 - If Dota changes private dashboard XML, profile selectors, or
   `dota_game_account_client_debug`, the mod may need another update.
 

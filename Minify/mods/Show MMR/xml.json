@@ -1,16 +1,4 @@
 {
-  "panorama/layout/hud/dota_hud_pregame.xml": [
-    {
-      "action": "add_script",
-      "src": "s2r://panorama/scripts/show_mmr_pregame.vjs_c"
-    }
-  ],
-  "panorama/layout/hud/dota_hud_pregame_playerdraft.xml": [
-    {
-      "action": "add_script",
-      "src": "s2r://panorama/scripts/show_mmr_pregame.vjs_c"
-    }
-  ],
   "panorama/layout/base.xml": [
     {
       "action": "add_script",
@@ -48,12 +36,6 @@
       "action": "add_child",
       "selector": "DOTADashboardBackgroundLastMatch",
       "xml": "<Panel id='ShowMMRLastMatchBootstrap' hittest='false' onload='ShowMMR_LastMatchInit()' />"
-    }
-  ],
-  "panorama/layout/dashboard_page_post_game.xml": [
-    {
-      "action": "add_script",
-      "src": "s2r://panorama/scripts/show_mmr_postgame.vjs_c"
     }
   ]
 }

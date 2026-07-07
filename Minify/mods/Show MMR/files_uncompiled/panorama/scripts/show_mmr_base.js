@@ -4,10 +4,6 @@ var ShowMMR_Debug = function (message) {
 	$.Msg("[ShowMMR] " + message);
 };
 
-var ShowMMR_Now = function () {
-	return Math.floor((Date.now ? Date.now() : (new Date()).getTime()) / 1000);
-};
-
 var ShowMMR_GetDashboardCore = function () {
 	var dashboard = $("#Dashboard");
 	return dashboard ? dashboard.FindChildInLayoutFile("DashboardCore") : null;
@@ -24,47 +20,6 @@ var ShowMMR_GetData = function () {
 var ShowMMR_ToNumber = function (value, fallback) {
 	var number = Number(value);
 	return isFinite(number) ? number : fallback;
-};
-
-var ShowMMR_SendEvent = function (name, payload) {
-	if (typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return false;
-	GameEvents.SendCustomGameEventToServer(name, payload || {});
-	return true;
-};
-
-var ShowMMR_Console = function (command) {
-	if (typeof GameInterfaceAPI === "undefined" || !GameInterfaceAPI.ConsoleCommand) return false;
-	GameInterfaceAPI.ConsoleCommand(command);
-	return true;
-};
-
-var ShowMMR_SavePendingBinding = function (payload, processed) {
-	var value = "showmmr_pending:" +
-		String(ShowMMR_ToNumber(payload.mmr, 0)) + ":" +
-		String(ShowMMR_ToNumber(payload.at, 0)) + ":" +
-		String(payload.match_id || "0") + ":" +
-		String(processed || 0);
-
-	if (!ShowMMR_Console('bindss 3 JOY32 "' + value + '"')) {
-		ShowMMR_Debug("base: pending bind save unavailable");
-		return;
-	}
-	ShowMMR_Console("writekeybindings");
-	ShowMMR_Debug("base: pending bind save " + value);
-};
-
-var ShowMMR_ApplyPending = function (data, pending) {
-	if (!data || !pending) return;
-
-	data.PendingStartMMR = ShowMMR_ToNumber(pending.mmr, data.PendingStartMMR || 0);
-	data.PendingStartedAt = ShowMMR_ToNumber(pending.at, data.PendingStartedAt || 0);
-	data.PendingMatchId = String(pending.match_id || data.PendingMatchId || "0");
-	data.PendingProcessed = ShowMMR_ToNumber(pending.processed, data.PendingProcessed || 0);
-};
-
-var ShowMMR_LoadPending = function (data) {
-	if (!data || typeof CustomNetTables === "undefined" || !CustomNetTables.GetTableValue) return;
-	ShowMMR_ApplyPending(data, CustomNetTables.GetTableValue("ShowMMR_pending", "state"));
 };
 
 var ShowMMR_LoadHistory = function (data) {
@@ -118,32 +73,8 @@ var ShowMMR_IsDashboard = function () {
 	return typeof GameUI === "undefined" || !GameUI.GetDotaGameUIState || GameUI.GetDotaGameUIState() === 3;
 };
 
-var ShowMMR_MarkPending = function (reason) {
-	var data = ShowMMR_GetData();
-	if (!data) return;
-
-	ShowMMR_LoadPending(data);
-	var mmr = ShowMMR_ToNumber(data.LastMMR, -1);
-	if (mmr < 1) mmr = ShowMMR_ToNumber(data.latestHistoryMMR, -1);
-
-	var payload = {
-		mmr: mmr > 0 ? mmr : 0,
-		at: ShowMMR_Now(),
-		reason: reason || "unknown"
-	};
-	if (data.PendingMatchId) payload.match_id = data.PendingMatchId;
-
-	data.PendingStartMMR = payload.mmr;
-	data.PendingStartedAt = payload.at;
-	data.PendingProcessed = 0;
-	ShowMMR_Debug("base: pending reason=" + payload.reason + " mmr=" + payload.mmr + " match_id=" + (payload.match_id || "0"));
-	ShowMMR_SavePendingBinding(payload, 0);
-	ShowMMR_SendEvent("ShowMMR_Pending", payload);
-};
-
 var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	ShowMMR_Debug("base: ui_state old=" + oldState + " new=" + newState);
-	if (oldState === 3 && newState !== 3) ShowMMR_MarkPending("leave_dashboard_" + newState);
 	if (newState !== 3) return;
 
 	var data = ShowMMR_GetData();
@@ -151,7 +82,6 @@ var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 
 	if (data.show == null) data.show = {};
 	ShowMMR_LoadHistory(data);
-	ShowMMR_LoadPending(data);
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 
 	if (oldState !== 1 && oldState !== 3) {
@@ -186,7 +116,6 @@ var ShowMMR_AccountUpdated = function () {
 
 	data.historyReady = false;
 	ShowMMR_LoadHistory(data);
-	ShowMMR_LoadPending(data);
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 
@@ -211,14 +140,6 @@ var ShowMMR_TableUpdated = function (_, key, value) {
 	ShowMMR_Debug("base: table update epoch=" + epoch + " mmr=" + value["1"] + " change=" + value["2"]);
 };
 
-var ShowMMR_PendingUpdated = function (_, key, value) {
-	var data = ShowMMR_GetData();
-	if (!data) return;
-
-	ShowMMR_ApplyPending(data, value);
-	ShowMMR_Debug("base: pending update mmr=" + (value && value.mmr) + " match_id=" + (value && value.match_id) + " processed=" + (value && value.processed));
-};
-
 var ShowMMR_Init = function () {
 	var data = ShowMMR_GetData();
 	if (!data) {
@@ -236,7 +157,6 @@ var ShowMMR_Init = function () {
 	$.RegisterForUnhandledEvent("DOTAGameAccountClientUpdated", ShowMMR_AccountUpdated);
 	if (typeof CustomNetTables !== "undefined" && CustomNetTables.SubscribeNetTableListener) {
 		CustomNetTables.SubscribeNetTableListener("ShowMMR_update", ShowMMR_TableUpdated);
-		CustomNetTables.SubscribeNetTableListener("ShowMMR_pending", ShowMMR_PendingUpdated);
 	}
 
 	ShowMMR_GameUIStateChanged(1, 3);

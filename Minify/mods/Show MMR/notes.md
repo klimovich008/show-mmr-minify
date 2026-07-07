@@ -2,16 +2,16 @@
 Show MMR is a Minify port of AveYo's ShowMMR dashboard mod.
 
 - Reads the visible ranked MMR value from the local profile stats page.
-- Stores a pending baseline in `JOY32` when Dota leaves dashboard/pregame/postgame is seen.
+- Stores a baseline by saving the newest ranked match-history row when the profile history page is opened.
 - Stores recent ranked MMR history locally in controller slot 3 bindings.
 - Loads history from `game/dota/cfg/user_keys_<account_id>_slot3.vcfg` with a `user_keys_0_slot3.vcfg` fallback.
 - Shows stored `MMR (change)` values in the profile recent-games list.
 - Replaces the last-match win/loss badge with the MMR change when history is known.
-- Logs every injected view with `[ShowMMR] base:`, `pregame:`, `postgame:`, `profile:`, or `last_match:`.
+- Logs every injected view with `[ShowMMR] base:`, `profile:`, or `last_match:`.
 
 Storage notes:
 
-- Current storage uses `slot3` `JOY1`-`JOY31` for history and `JOY32` for pending state.
+- Current storage uses `slot3` `JOY1`-`JOY31` for history and `JOY32` for an account marker.
 - Current readable format stores about 620 match records.
 - Local inspection showed `slot1` and `slot2` are usually empty, while `slot0` contains real user binds and should not be used for mod storage.
 - A future Minify-level storage helper could allocate `JOY1`-`JOY32` pages across slots 1-3, namespace pages per mod, and add checksums.

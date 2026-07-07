@@ -10,11 +10,6 @@ var ShowMMR_ProfileDebug = function (message) {
 	$.Msg("[ShowMMR] " + message);
 };
 
-var ShowMMR_ProfileToNumber = function (value, fallback) {
-	var number = Number(value);
-	return isFinite(number) ? number : fallback;
-};
-
 var ShowMMR_ProfileNow = function () {
 	return Math.floor((Date.now ? Date.now() : (new Date()).getTime()) / 1000);
 };
@@ -42,17 +37,6 @@ var ShowMMR_ProfileData = function (root) {
 	core.Data.ShowMMR = core.Data.ShowMMR || {};
 	if (core.Data.ShowMMR.show == null) core.Data.ShowMMR.show = {};
 	return core.Data.ShowMMR;
-};
-
-var ShowMMR_ProfileLoadPending = function (data) {
-	if (!data || typeof CustomNetTables === "undefined" || !CustomNetTables.GetTableValue) return;
-
-	var pending = CustomNetTables.GetTableValue("ShowMMR_pending", "state");
-	if (!pending) return;
-	data.PendingStartMMR = ShowMMR_ProfileToNumber(pending.mmr, data.PendingStartMMR || 0);
-	data.PendingStartedAt = ShowMMR_ProfileToNumber(pending.at, data.PendingStartedAt || 0);
-	data.PendingMatchId = String(pending.match_id || data.PendingMatchId || "0");
-	data.PendingProcessed = ShowMMR_ProfileToNumber(pending.processed, data.PendingProcessed || 0);
 };
 
 var ShowMMR_ProfileLatestKnown = function (data) {
@@ -191,67 +175,16 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 };
 
 var ShowMMR_SendRefresh = function (mmr, time, change) {
-	if (mmr < 0 || typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return;
+	if (mmr < 0 || typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) {
+		ShowMMR_ProfileDebug("profile: refresh event unavailable");
+		return false;
+	}
 
 	var payload = {mmr: mmr};
 	if (time > 0) payload.time = time;
 	if (typeof change !== "undefined") payload.change = change;
 	GameEvents.SendCustomGameEventToServer("ShowMMR_Refresh", payload);
-};
-
-var ShowMMR_ProfileConsole = function (command) {
-	if (typeof GameInterfaceAPI === "undefined" || !GameInterfaceAPI.ConsoleCommand) return false;
-	GameInterfaceAPI.ConsoleCommand(command);
 	return true;
-};
-
-var ShowMMR_ProfileRecordValue = function (value, index, fallback) {
-	if (!value) return fallback;
-	if (typeof value[index] !== "undefined") return ShowMMR_ProfileToNumber(value[index], fallback);
-	return ShowMMR_ProfileToNumber(value[String(index + 1)], fallback);
-};
-
-var ShowMMR_ProfileSaveBindings = function (data, epoch, mmr, change) {
-	if (!data || epoch <= 0 || mmr < 0) return;
-	if (!ShowMMR_ProfileConsole('bindss 3 JOY32 "showmmr_pending:' + mmr + ':' + ShowMMR_ProfileNow() + ':' + (data.PendingMatchId || "0") + ':1"')) {
-		ShowMMR_ProfileDebug("profile: binding save unavailable");
-		return;
-	}
-
-	data.history = data.history || {};
-	data.history[epoch] = [mmr, change];
-
-	var ordered = [];
-	for (var key in data.history) {
-		if (!Object.prototype.hasOwnProperty.call(data.history, key)) continue;
-		var parsed = parseInt(key, 10);
-		if (parsed > 0) ordered.push(parsed);
-	}
-	ordered.sort(function (a, b) { return b - a; });
-
-	var remain = ordered.length;
-	var pages = 1;
-	var line = 0;
-	var text = "";
-	for (var i = 0; i < ordered.length && pages <= 31; i++) {
-		var itemEpoch = ordered[i];
-		var value = data.history[itemEpoch];
-		var itemMMR = ShowMMR_ProfileRecordValue(value, 0, -1);
-		var itemChange = ShowMMR_ProfileRecordValue(value, 1, -1);
-		if (itemMMR < 0 || itemChange < -9999) continue;
-
-		line++;
-		text += "," + itemEpoch + ":[" + itemMMR + "," + itemChange + "]";
-		if (line === remain || line === Math.min(20, remain)) {
-			ShowMMR_ProfileConsole('bindss 3 JOY' + pages + ' "' + text.substring(1) + '"');
-			remain -= line;
-			line = 0;
-			pages++;
-			text = "";
-		}
-	}
-	ShowMMR_ProfileConsole("writekeybindings");
-	ShowMMR_ProfileDebug("profile: binding save entries=" + ordered.length + " latest=" + epoch);
 };
 
 var ShowMMR_ProfileReadMMR = function (root) {
@@ -282,48 +215,38 @@ var ShowMMR_ProfileCaptureFromOpenPage = function (root, data) {
 
 var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 	if (!data || !row || !row.isRanked || row.epoch <= 0) return;
-	ShowMMR_ProfileLoadPending(data);
 	if (row.known && row.known[0] > 0) return;
 
 	var mmr = ShowMMR_ProfileCaptureFromOpenPage(root, data);
 	if (mmr < 1) return;
 
 	var latest = ShowMMR_ProfileLatestKnown(data);
-	if (row.epoch <= latest.epoch) return;
+	if (row.epoch < latest.epoch) return;
 	var now = ShowMMR_ProfileNow();
 	if (data.LastAttachedEpoch === row.epoch && data.LastAttachedMMR === mmr && now - (data.LastAttachedAt || 0) < 10) return;
 
-	var pendingMMR = ShowMMR_ProfileToNumber(data.PendingStartMMR, 0);
-	var hasPending = pendingMMR > 0 && data.PendingProcessed !== 1;
-	var baseline = hasPending ? pendingMMR : latest.mmr;
-	if (baseline < 1) {
-		ShowMMR_ProfileDebug("profile: newest ranked epoch=" + row.epoch + " mmr=" + mmr + " waiting for baseline");
-		return;
-	}
-
-	var change = mmr - baseline;
-	if (hasPending && change === 0) {
-		ShowMMR_ProfileDebug("profile: newest ranked epoch=" + row.epoch + " mmr=" + mmr + " unchanged pending baseline");
-		return;
-	}
+	var change = latest.mmr > 0 && row.epoch > latest.epoch ? mmr - latest.mmr : 0;
 
 	data.LastAttachedEpoch = row.epoch;
 	data.LastAttachedMMR = mmr;
 	data.LastAttachedAt = now;
 	ShowMMR_ProfileDebug(
-		"profile: attach newest epoch=" + row.epoch +
+		"profile: save newest epoch=" + row.epoch +
 		" mmr=" + mmr +
 		" change=" + change +
-		" baseline=" + baseline +
-		" latest=" + latest.epoch +
-		" pending_match_id=" + (data.PendingMatchId || "0")
+		" latest_epoch=" + latest.epoch +
+		" latest_mmr=" + latest.mmr
 	);
-	ShowMMR_SendRefresh(mmr, row.epoch, change);
-	ShowMMR_ProfileSaveBindings(data, row.epoch, mmr, change);
+	if (!ShowMMR_SendRefresh(mmr, row.epoch, change)) return;
 
+	data.history = data.history || {};
+	data.history[row.epoch] = [mmr, change];
+	data.historyReady = true;
 	row.found.mmr = mmr;
 	row.found.shift = change;
+	row.known = data.history[row.epoch];
 	ShowMMR_ProfileApplyLabel(row.entry, row.result, data, row.found);
+	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 
 var ShowMMR_ProfileScanRows = function () {
@@ -373,7 +296,6 @@ var ShowMMR_ProfileValue = function () {
 		ShowMMR_ProfileDebug("profile: loaded");
 	}
 
-	ShowMMR_ProfileLoadPending(data);
 	ShowMMR_ProfileCaptureFromOpenPage(root, data);
 	ShowMMR_ProfileStartScanner();
 
