@@ -55,9 +55,10 @@ search path:
 <dota 2 beta>\game\dota\cfg\user_keys_<account_id>_slot3.vcfg
 ```
 
-Seed one file per Dota account. The mod intentionally does not read the shared
-`cfg/user_keys_0_slot3.vcfg` fallback because it can leak another account's MMR
-history into a fresh account.
+The mod also accepts `cfg/user_keys_0_slot3.vcfg` when it contains a
+same-account `showmmr_pending_v2` marker written by this mod. Unmarked shared
+slot files are ignored so another account's MMR history cannot leak into a
+fresh account.
 
 ## Usage
 
@@ -100,11 +101,11 @@ MMR values.
 The pending marker uses `JOY32` and looks like:
 
 ```text
-"JOY32" "showmmr_pending:7539:1783336560:8883733433:0"
+"JOY32" "showmmr_pending_v2:1665041461:7539:1783336560:8883733433:0"
 ```
 
-Fields are `mmr:epoch:match_id:processed`. `processed` becomes `1` after the
-profile history row is attached.
+Fields are `account_id:mmr:epoch:match_id:processed`. `processed` becomes `1`
+after the profile history row is attached.
 
 ## Troubleshooting
 
@@ -117,9 +118,11 @@ profile history row is attached.
 - If no rows change, the mod probably has no stored history for those matches.
   Open Profile -> History -> Match History once so the profile scanner can bind
   the current MMR to the newest ranked row.
-- If logs say `load bindings path=none` or history is stale after restart, copy
-  that account's Steam userdata `user_keys_0_slot3.vcfg` file to Dota's
-  `game\dota\cfg\user_keys_<account_id>_slot3.vcfg`, then restart Dota.
+- `Script failed to LoadKeyValues cfg/user_keys_<account_id>_slot3.vcfg` is
+  normal on a fresh account before any ShowMMR history exists.
+- If logs say `ignore shared bindings`, the shared slot belongs to another
+  account or an older unmarked build; play one game with this build active or
+  seed the account-specific file manually.
 - For live debugging, Dota's console log should contain lines starting with
   `[ShowMMR] base:`, `[ShowMMR] pregame:`, `[ShowMMR] postgame:`,
   `[ShowMMR] profile:`, and `[ShowMMR] refresh`.

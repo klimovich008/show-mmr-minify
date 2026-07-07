@@ -7,9 +7,22 @@ if ShowMMR == nil then ShowMMR = class({}) end
 function ShowMMR:LoadPending(value)
 	if value == nil then return end
 
+	local user, mmr, at, match_id, processed = tostring(value):match('^showmmr_pending_v2:(%d+):(%d+):(%d+):(%d*):(%d+)$')
+	if user ~= nil then
+		self.pending_user = user
+		self.pending = {
+			mmr = tonumber(mmr) or 0,
+			at = tonumber(at) or 0,
+			match_id = match_id ~= '' and match_id or '0',
+			processed = tonumber(processed) or 0
+		}
+		return
+	end
+
 	local mmr, at, match_id, processed = tostring(value):match('^showmmr_pending:(%d+):(%d+):(%d*):(%d+)$')
 	if mmr == nil then return end
 
+	self.pending_user = nil
 	self.pending = {
 		mmr = tonumber(mmr) or 0,
 		at = tonumber(at) or 0,
@@ -34,7 +47,8 @@ function ShowMMR:SavePending()
 	if self.pending_bind == nil then self.pending_bind = 'JOY32' end
 	self.pending = self.pending or {mmr = 0, at = 0, match_id = '0', processed = 1}
 
-	local value = 'showmmr_pending:' ..
+	local value = 'showmmr_pending_v2:' ..
+		tostring(self.user or 0) .. ':' ..
 		tostring(tonumber(self.pending.mmr) or 0) .. ':' ..
 		tostring(tonumber(self.pending.at) or 0) .. ':' ..
 		tostring(self.pending.match_id or '0') .. ':' ..
@@ -61,13 +75,21 @@ function ShowMMR:Init(e)
 
 	local data_file, data_path = nil, nil
 	local data_paths = {
-		'cfg/user_keys_' .. self.user .. '_slot3.vcfg'
+		{path = 'cfg/user_keys_' .. self.user .. '_slot3.vcfg', shared = false},
+		{path = 'cfg/user_keys_0_slot3.vcfg', shared = true}
 	}
-	for _, path in ipairs(data_paths) do
-		data_file = LoadKeyValues(path)
+	for _, candidate in ipairs(data_paths) do
+		data_file = LoadKeyValues(candidate.path)
 		if data_file ~= nil then
-			data_path = path
-			break
+			data_path = candidate.path
+			if candidate.shared and data_file.bindings ~= nil then
+				local pending_user = tostring(data_file.bindings[self.pending_bind] or ''):match('^showmmr_pending_v2:(%d+):')
+				if tostring(pending_user or '') ~= tostring(self.user) then
+					print('[ShowMMR] ignore shared bindings path=' .. data_path .. ' user=' .. tostring(pending_user or 'none'))
+					data_file = nil
+				end
+			end
+			if data_file ~= nil then break end
 		end
 	end
 	print('[ShowMMR] load bindings path=' .. tostring(data_path or 'none'))
