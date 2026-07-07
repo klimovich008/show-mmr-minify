@@ -247,6 +247,11 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 	}
 
 	var change = mmr - baseline;
+	if (hasPending && change === 0) {
+		ShowMMR_ProfileDebug("profile: newest ranked epoch=" + row.epoch + " mmr=" + mmr + " unchanged pending baseline");
+		return;
+	}
+
 	data.LastAttachedEpoch = row.epoch;
 	data.LastAttachedMMR = mmr;
 	data.LastAttachedAt = now;
