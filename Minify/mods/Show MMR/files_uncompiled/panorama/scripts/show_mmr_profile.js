@@ -250,7 +250,6 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root) {
 	data.LastAttachedEpoch = row.epoch;
 	data.LastAttachedMMR = mmr;
 	data.LastAttachedAt = now;
-	data.PendingProcessed = 1;
 	ShowMMR_ProfileDebug(
 		"profile: attach newest epoch=" + row.epoch +
 		" mmr=" + mmr +
