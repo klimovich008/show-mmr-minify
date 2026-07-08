@@ -6,6 +6,8 @@ The mod stores local ranked MMR history and shows known `MMR (change)` values in
 the Dota profile match-history list. It also replaces the last-match win/loss
 badge with the MMR change when that match is known.
 
+![Show MMR match history screenshot](assets/show-mmr-match-history.png)
+
 ## Requirements
 
 - Dota 2
