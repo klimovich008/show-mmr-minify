@@ -1,11 +1,21 @@
 param(
-    [string[]]$Paths = @(
-        "${env:ProgramFiles(x86)}\Steam\userdata\*\570\local\cfg\user_keys*_slot3.vcfg",
-        "G:\SteamLibrary\steamapps\common\dota 2 beta\game\dota\cfg\user_keys*_slot3.vcfg"
-    ),
+    [string[]]$Paths,
     [switch]$ClearAllJoySlots,
     [switch]$NoBackup
 )
+
+if (-not $Paths) {
+    $steam = (Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).SteamPath
+    if (-not $steam) { throw "Steam install not found in registry; pass -Paths explicitly." }
+    $Paths = @(Join-Path $steam "userdata\*\570\local\cfg\user_keys*_slot3.vcfg")
+    $vdf = Join-Path $steam "steamapps\libraryfolders.vdf"
+    if (Test-Path $vdf) {
+        foreach ($match in [regex]::Matches((Get-Content -Raw $vdf), '"path"\s+"([^"]+)"')) {
+            $library = $match.Groups[1].Value -replace '\\\\', '\'
+            $Paths += Join-Path $library "steamapps\common\dota 2 beta\game\dota\cfg\user_keys*_slot3.vcfg"
+        }
+    }
+}
 
 $joyLine = '^\s*"JOY([1-9]|[12][0-9]|3[0-2])"\s+"([^"]*)"\s*$'
 $showMmrValue = '^(showmmr_(pending(_v2)?|user):|[0-9]{8,}:\[[0-9-]+,[0-9-]+\](,[0-9]{8,}:\[[0-9-]+,[0-9-]+\])*)'

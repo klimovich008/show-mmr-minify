@@ -4,7 +4,10 @@ var ShowMMR_LastMatchPanel = null;
 var ShowMMR_LastLoggedNoCore = false;
 var ShowMMR_LastLoggedEpochFail = false;
 
+var ShowMMR_LastDebugEnabled = true;
+
 var ShowMMR_LastDebug = function (message) {
+	if (!ShowMMR_LastDebugEnabled) return;
 	$.Msg("[ShowMMR] " + message);
 };
 

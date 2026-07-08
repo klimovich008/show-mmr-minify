@@ -7,7 +7,10 @@ var ShowMMR_ProfileLoggedRows = false;
 var ShowMMR_ProfileLoggedNoMMR = false;
 var ShowMMR_ProfileLoggedEpochFail = false;
 
+var ShowMMR_ProfileDebugEnabled = true;
+
 var ShowMMR_ProfileDebug = function (message) {
+	if (!ShowMMR_ProfileDebugEnabled) return;
 	$.Msg("[ShowMMR] " + message);
 };
 
@@ -308,7 +311,6 @@ var ShowMMR_ProfileValue = function () {
 
 	if (!data.Refreshing) return;
 
-	data.mmr = -1;
 	data.mmr = ShowMMR_ProfileReadMMR(root);
 
 	if (data.mmr > -1 || --data.retries < 1) {

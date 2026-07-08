@@ -1,6 +1,9 @@
 "use strict";
 
+var ShowMMR_DebugEnabled = true;
+
 var ShowMMR_Debug = function (message) {
+	if (!ShowMMR_DebugEnabled) return;
 	$.Msg("[ShowMMR] " + message);
 };
 
@@ -85,7 +88,7 @@ var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 
 	if (oldState !== 1 && oldState !== 3) {
-		$.Schedule(20.0, function () {
+		$.Schedule(12.0, function () {
 			ShowMMR_Refresh(true);
 		});
 	}
@@ -122,12 +125,12 @@ var ShowMMR_AccountUpdated = function () {
 var ShowMMR_RankUpdated = function () {
 	ShowMMR_Debug("base: rank updated");
 	ShowMMR_AccountUpdated();
-	$.Schedule(8.0, ShowMMR_Refresh);
+	$.Schedule(5.0, ShowMMR_Refresh);
 };
 
 var ShowMMR_TableUpdated = function (_, key, value) {
 	var data = ShowMMR_GetData();
-	if (!data) return;
+	if (!data || !value) return;
 
 	ShowMMR_LoadHistory(data);
 	var epoch = parseInt(key, 10);

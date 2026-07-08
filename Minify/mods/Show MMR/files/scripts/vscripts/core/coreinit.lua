@@ -8,7 +8,7 @@ function ShowMMR:StorageUser(bindings)
 	if bindings == nil then return nil end
 
 	local marker = tostring(bindings.JOY32 or '')
-	return marker:match('^showmmr_user:(%d+)$') or marker:match('^showmmr_pending_v2:(%d+):')
+	return marker:match('^showmmr_user:(%d+)$')
 end
 
 function ShowMMR:HasHistory(bindings)
@@ -24,7 +24,7 @@ end
 function ShowMMR:HasStorage(data_file)
 	if data_file == nil then return false end
 
-	return self:HasHistory(data_file.bindings) or data_file.matches ~= nil or self:StorageUser(data_file.bindings) ~= nil
+	return self:HasHistory(data_file.bindings) or self:StorageUser(data_file.bindings) ~= nil
 end
 
 function ShowMMR:SaveMarker()
@@ -38,7 +38,6 @@ function ShowMMR:Init(e)
 
 	self.user = e.networkid:match('^%[%a:[0-5]:(%d+).*%]$') or 0
 	self.data = self.data or {}
-	self.matches = self.matches or {}
 	self.history = self.history or {}
 
 	if self.bind == nil then
@@ -47,6 +46,9 @@ function ShowMMR:Init(e)
 	end
 
 	local data_file, data_path = nil, nil
+	-- The absolute path is a best-effort candidate for the default Steam install;
+	-- LoadKeyValues resolves it when Steam userdata lives on C:. Other layouts
+	-- fall through to the Dota cfg search paths below.
 	local data_paths = {
 		{path = 'C:/Program Files (x86)/Steam/userdata/' .. self.user .. '/570/local/cfg/user_keys_0_slot3.vcfg', shared = false},
 		{path = 'cfg/user_keys_' .. self.user .. '_slot3.vcfg', shared = false},
@@ -86,13 +88,6 @@ function ShowMMR:Init(e)
 			self.data = json.decode('{' .. table.concat(list, ',') .. '}') or {}
 			vlua.tableadd(self.history, self.data)
 		end
-	end
-
-	if data_file ~= nil and data_file.matches ~= nil then
-		for _, v in pairs(data_file.matches) do
-			self.matches[v.date] = {v.mmr, v.outcome}
-		end
-		vlua.tableadd(self.history, self.matches)
 	end
 
 	if CustomNetTables then
@@ -205,6 +200,8 @@ function ShowMMR:Save(e)
 	if serialize == true then
 		print('[ShowMMR] saving bindings entries=' .. tostring(#ordered))
 		if table.nkeys == nil then require 'table.nkeys' end
+		-- Capacity: 31 pages (JOY1-JOY31) x 20 records = 620. Records are written
+		-- newest-first, so on overflow the oldest records are dropped from storage.
 		local remain, limit, pages, line, text = table.nkeys(self.data), table.nkeys(self.bind), 1, 0, ''
 		for _, v in ipairs(ordered) do
 			line = line + 1
@@ -215,7 +212,10 @@ function ShowMMR:Save(e)
 				line = 0
 				pages = pages + 1
 				text = ''
-				if pages > limit then break end
+				if pages > limit then
+					print('[ShowMMR] storage capacity reached, oldest ' .. tostring(remain) .. ' record(s) not saved')
+					break
+				end
 			end
 		end
 		self:SaveMarker()
