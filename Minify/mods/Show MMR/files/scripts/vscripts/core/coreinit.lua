@@ -118,8 +118,8 @@ function ShowMMR:Init(e)
 	if self.cfg == nil then
 		self.cfg = {}
 
-		Convars:RegisterCommand('cfg', function(_, key, _, val, ...)
-			if key and key:match('%l[%l%d_]+') and val then
+		Convars:RegisterCommand('showmmr_cfg', function(_, key, _, val, ...)
+			if key and key:match('^%l[%l%d_]+$') and val then
 				self.cfg[key] = val
 				if key == 'recent_game_time_3' then
 					self:Save({round_name = 'cfg_updated'})
@@ -128,7 +128,7 @@ function ShowMMR:Init(e)
 					FireGameEvent('round_start', {round_name = 'cfg_updated', round_number = 1})
 				end
 			end
-		end, 'pipe console keyvalue-like output to vscript cfg [recent_game_time_1=timestamp]..', 0)
+		end, 'pipe console keyvalue-like output to ShowMMR [recent_game_time_1=timestamp]..', 0)
 
 		if CustomGameEventManager then
 			CustomGameEventManager:RegisterListener('ShowMMR_Refresh', function(...) return ShowMMR:Refresh(...) end)
@@ -153,7 +153,7 @@ function ShowMMR:Refresh(_, e)
 		return
 	end
 
-	SendToServerConsole('dota_game_account_client_debug | cfg;')
+	SendToServerConsole('dota_game_account_client_debug | showmmr_cfg;')
 end
 
 function ShowMMR:Save(e)

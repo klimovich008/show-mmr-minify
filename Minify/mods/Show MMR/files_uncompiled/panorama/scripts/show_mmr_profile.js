@@ -5,6 +5,7 @@ var ShowMMR_ProfileLoggedNoCore = false;
 var ShowMMR_ProfileLoggedInit = false;
 var ShowMMR_ProfileLoggedRows = false;
 var ShowMMR_ProfileLoggedNoMMR = false;
+var ShowMMR_ProfileLoggedEpochFail = false;
 
 var ShowMMR_ProfileDebug = function (message) {
 	$.Msg("[ShowMMR] " + message);
@@ -16,6 +17,7 @@ var ShowMMR_ProfileNow = function () {
 
 var ShowMMR_ProfileRoot = function () {
 	var panel = $.GetContextPanel();
+	if (!panel || (panel.IsValid && !panel.IsValid())) return null;
 	var parent = panel.GetParent ? panel.GetParent() : null;
 	return panel.FindAncestor("DOTAProfileHeroStatsPage") || parent || panel;
 };
@@ -96,6 +98,10 @@ var ShowMMR_ProfileEpoch = function (panel, dateText, timeText, durationText, fo
 	).split("|");
 	for (var j = 0; j < localized.length; j++) {
 		if (localized[j] === dst) epoch = utc[j];
+	}
+	if (epoch === 0 && !ShowMMR_ProfileLoggedEpochFail) {
+		ShowMMR_ProfileLoggedEpochFail = true;
+		ShowMMR_ProfileDebug("profile: epoch parse failed date=" + dateText + " gmt=" + gmt + " dst=" + dst);
 	}
 
 	return epoch;
@@ -249,6 +255,10 @@ var ShowMMR_ProfileScanRows = function () {
 	if (!ShowMMR_ProfileScannerRunning) return;
 
 	var root = ShowMMR_ProfileRoot();
+	if (!root || (root.IsValid && !root.IsValid())) {
+		ShowMMR_ProfileScannerRunning = false;
+		return;
+	}
 	var data = ShowMMR_ProfileData(root);
 	if (data) ShowMMR_ProfileCaptureFromOpenPage(root, data);
 
@@ -285,6 +295,7 @@ var ShowMMR_ProfileStartScanner = function () {
 
 var ShowMMR_ProfileValue = function () {
 	var root = ShowMMR_ProfileRoot();
+	if (!root) return;
 	var data = ShowMMR_ProfileData(root);
 	if (!data) return;
 	if (!ShowMMR_ProfileLoggedInit) {

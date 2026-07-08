@@ -131,13 +131,15 @@ var ShowMMR_TableUpdated = function (_, key, value) {
 
 	ShowMMR_LoadHistory(data);
 	var epoch = parseInt(key, 10);
-	data.history[epoch] = [value["1"], value["2"]];
+	var mmr = ShowMMR_ToNumber(value["1"], -1);
+	var change = ShowMMR_ToNumber(value["2"], -1);
+	data.history[epoch] = [mmr, change];
 	data.historyReady = true;
-	if (epoch > (data.latestHistoryEpoch || 0) && value["1"] > 0) {
+	if (epoch > (data.latestHistoryEpoch || 0) && mmr > 0) {
 		data.latestHistoryEpoch = epoch;
-		data.latestHistoryMMR = value["1"];
+		data.latestHistoryMMR = mmr;
 	}
-	ShowMMR_Debug("base: table update epoch=" + epoch + " mmr=" + value["1"] + " change=" + value["2"]);
+	ShowMMR_Debug("base: table update epoch=" + epoch + " mmr=" + mmr + " change=" + change);
 };
 
 var ShowMMR_Init = function () {

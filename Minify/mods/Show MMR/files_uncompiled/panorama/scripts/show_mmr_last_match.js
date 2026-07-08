@@ -2,20 +2,29 @@
 
 var ShowMMR_LastMatchPanel = null;
 var ShowMMR_LastLoggedNoCore = false;
+var ShowMMR_LastLoggedEpochFail = false;
 
 var ShowMMR_LastDebug = function (message) {
 	$.Msg("[ShowMMR] " + message);
 };
 
+var ShowMMR_LastPanelValid = function (panel) {
+	return panel && (!panel.IsValid || panel.IsValid());
+};
+
 var ShowMMR_LastRoot = function () {
-	if (ShowMMR_LastMatchPanel) return ShowMMR_LastMatchPanel;
+	if (ShowMMR_LastPanelValid(ShowMMR_LastMatchPanel)) return ShowMMR_LastMatchPanel;
+	ShowMMR_LastMatchPanel = null;
 
 	var panel = $.GetContextPanel();
+	if (!ShowMMR_LastPanelValid(panel)) return null;
 	var parent = panel.GetParent ? panel.GetParent() : null;
-	return panel.FindAncestor("DOTADashboardBackgroundLastMatch") || parent || panel;
+	ShowMMR_LastMatchPanel = panel.FindAncestor("DOTADashboardBackgroundLastMatch") || parent || panel;
+	return ShowMMR_LastMatchPanel;
 };
 
 var ShowMMR_LastData = function (root) {
+	if (!root) return null;
 	var core = root.FindAncestor("DashboardCore");
 	if (!core) {
 		if (!ShowMMR_LastLoggedNoCore) {
@@ -71,6 +80,10 @@ var ShowMMR_LastEpoch = function (panel, dateText, found) {
 	).split("|");
 	for (var j = 0; j < localized.length; j++) {
 		if (localized[j] === dst) epoch = utc[j];
+	}
+	if (epoch === 0 && !ShowMMR_LastLoggedEpochFail) {
+		ShowMMR_LastLoggedEpochFail = true;
+		ShowMMR_LastDebug("last_match: epoch parse failed date=" + dateText + " gmt=" + gmt + " dst=" + dst);
 	}
 
 	return epoch;
