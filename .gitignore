@@ -7,3 +7,4 @@
 .patched-current/
 user_keys_*_slot3.vcfg
 showmmr_backup_*/
+__pycache__/

@@ -1,171 +1,205 @@
 "use strict";
 
 var ShowMMR_DebugEnabled = true;
-
+var ShowMMR_WatchError = "";
 var ShowMMR_Debug = function (message) {
-	if (!ShowMMR_DebugEnabled) return;
-	$.Msg("[ShowMMR] " + message);
-};
-
-var ShowMMR_GetDashboardCore = function () {
-	var dashboard = $("#Dashboard");
-	return dashboard ? dashboard.FindChildInLayoutFile("DashboardCore") : null;
+	var data = ShowMMR_GetData();
+	if (ShowMMR_DebugEnabled && !(data && data.options && data.options.verbose === false)) $.Msg("[ShowMMR] " + message);
 };
 
 var ShowMMR_GetData = function () {
-	var core = ShowMMR_GetDashboardCore();
+	var dashboard = $("#Dashboard");
+	var core = dashboard ? dashboard.FindChildInLayoutFile("DashboardCore") : null;
 	if (!core) return null;
-
 	core.Data.ShowMMR = core.Data.ShowMMR || {};
 	return core.Data.ShowMMR;
 };
 
-var ShowMMR_ToNumber = function (value, fallback) {
-	var number = Number(value);
-	return isFinite(number) ? number : fallback;
-};
-
 var ShowMMR_LoadHistory = function (data) {
-	if (!data || data.historyReady) return;
-
-	data.history = {};
-	data.latestHistoryEpoch = 0;
-	data.latestHistoryMMR = -1;
-	if (typeof CustomNetTables === "undefined" || !CustomNetTables.GetAllTableValues) return;
-
-	var history = CustomNetTables.GetAllTableValues("ShowMMR_history") || [];
-	var count = 0;
-	for (var i = 0; i < history.length; ++i) {
-		var kv = history[i].value;
-		if (!kv) continue;
-
-		for (var key in kv) {
-			if (!Object.prototype.hasOwnProperty.call(kv, key)) continue;
-			var value = kv[key];
-			var epoch = parseInt(key, 10);
-			var mmr = ShowMMR_ToNumber(value["1"], -1);
-			data.history[epoch] = [mmr, ShowMMR_ToNumber(value["2"], -1)];
-			if (epoch > data.latestHistoryEpoch && mmr > 0) {
-				data.latestHistoryEpoch = epoch;
-				data.latestHistoryMMR = mmr;
-			}
+	if (!data) return;
+	var candidate = data.Candidate;
+	data.Candidate = null;
+	data.historyReady = false;
+	if (typeof CustomNetTables === "undefined") return;
+	var state = CustomNetTables.GetTableValue("ShowMMR_history", "state");
+	if (!state) return;
+	var history = {}, count = 0;
+	for (var i = 1; i <= state.pages; i++) {
+		var page = CustomNetTables.GetTableValue("ShowMMR_history", "page" + i);
+		if (!page || page.revision !== state.revision || String(page.user) !== String(state.user)) return;
+		for (var key in page.records) {
+			if (!Object.prototype.hasOwnProperty.call(page.records, key)) continue;
+			var epoch = Number(key), value = page.records[key];
+			if (!isFinite(epoch) || epoch < 1000000000 || !value ||
+				!isFinite(Number(value["1"])) || !isFinite(Number(value["2"]))) return;
+			history[epoch] = [Number(value["1"]), Number(value["2"])];
 			count++;
 		}
 	}
-	if (count > 0) {
+	if (count !== Number(state.count)) return;
+	var pending = state.pending;
+	pending = pending && Number(pending.phase) > 0 ? {
+		phase: Number(pending.phase), mmr: Number(pending.mmr), at: Number(pending.at),
+		previous: Number(pending.previous), match_id: String(pending.match_id),
+		started: Number(pending.started), reason: Number(pending.reason)
+	} : null;
+	// Lua revisions restart with the VM; only a complete, identical snapshot is a cache hit.
+	var snapshot = JSON.stringify([String(state.user), state.revision, Number(state.blocked), pending, history]);
+	if (data.historySnapshot === snapshot) {
+		data.Candidate = candidate;
 		data.historyReady = true;
-		data.historyRetries = 0;
-		ShowMMR_Debug("base: history loaded count=" + count + " latest=" + data.latestHistoryEpoch + " mmr=" + data.latestHistoryMMR);
 		return;
 	}
-
-	data.historyRetries = (data.historyRetries || 0) + 1;
-	if (data.historyRetries > 10) {
-		ShowMMR_Debug("base: history empty after retries");
-		return;
+	if (data.user !== String(state.user)) {
+		data.LastAttachedAt = 0;
+		data.Candidate = null;
+		data.InitialBaselineRequested = false;
+		data.CaptureRequested = false;
 	}
-
-	$.Schedule(1.0, function () {
-		var retry = ShowMMR_GetData();
-		ShowMMR_LoadHistory(retry);
-		$.DispatchEvent("DOTABackgroundLastMatchUpdated");
-	});
+	data.user = String(state.user);
+	data.history = history;
+	data.show = {};
+	data.historyRevision = state.revision;
+	data.historySnapshot = snapshot;
+	data.LastSubmission = null;
+	data.ReportedUncertainty = null;
+	data.storageBlocked = Number(state.blocked) === 1;
+	data.pending = pending;
+	data.historyReady = true; // Empty is a valid, fully loaded account snapshot.
+	ShowMMR_Debug("base: history user=" + data.user + " count=" + count + " revision=" + state.revision + " blocked=" + state.blocked);
+	if (data.pending) ShowMMR_Debug("base: pending phase=" + data.pending.phase + " mmr=" + data.pending.mmr +
+		" previous=" + data.pending.previous + " at=" + data.pending.at + " match_id=" + data.pending.match_id);
+	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 
 var ShowMMR_IsDashboard = function () {
-	return typeof GameUI === "undefined" || !GameUI.GetDotaGameUIState || GameUI.GetDotaGameUIState() === 3;
+	var data = ShowMMR_GetData();
+	return data && data.UIState === 3;
 };
 
-var ShowMMR_GameUIStateChanged = function (oldState, newState) {
-	ShowMMR_Debug("base: ui_state old=" + oldState + " new=" + newState);
-	if (newState !== 3) return;
+var ShowMMR_IsIdle = function () {
+	var dashboard = $("#Dashboard");
+	var play = dashboard && dashboard.FindChildTraverse ? dashboard.FindChildTraverse("Play") : null;
+	if (!ShowMMR_IsDashboard() || !play || play.paneltype !== "DOTAPlay") return false;
+	if (dashboard.BHasClass("IsInGame") || dashboard.BHasClass("Connecting") || dashboard.BHasClass("PreConnected")) return false;
+	var active = ["CanReconnect", "CanDisconnect", "CanAbandonGame", "CanSafeLeaveGame", "Connecting", "ReconnectInProgress",
+		"InReadyUp", "ReturningToQueue", "FindMsgInFlight", "LobbyVisible"];
+	for (var i = 0; i < active.length; i++) if (play.BHasClass(active[i])) return false;
+	if (play.BHasClass("PlayButtonStartsSearching") || play.BHasClass("FindingMatch")) return true;
+	// With the side panel closed, native Dota exposes idle through its button label.
+	var idleLabel = $.Localize("#dota_play");
+	return idleLabel !== "#dota_play" && idleLabel !== "" && $.Localize("{s:play_button_label}", play) === idleLabel;
+};
 
-	var data = ShowMMR_GetData();
-	if (!data) return;
-
-	if (data.show == null) data.show = {};
-	ShowMMR_LoadHistory(data);
-	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
-
-	if (oldState !== 1 && oldState !== 3) {
-		$.Schedule(12.0, function () {
-			ShowMMR_Refresh(true);
-		});
+var ShowMMR_WatchDashboard = function () {
+	var data = null;
+	try {
+		data = ShowMMR_GetData();
+		if (!data) return;
+		var idle = ShowMMR_IsIdle();
+		var dashboard = $("#Dashboard"), play = dashboard && dashboard.FindChildTraverse ? dashboard.FindChildTraverse("Play") : null;
+		var queued = !!(play && play.BHasClass("FindingMatch"));
+		if (ShowMMR_DebugEnabled && play) {
+			var nativeState = "type=" + play.paneltype + " label=" + $.Localize("{s:play_button_label}", play);
+			if (data.LastNativePlayState !== nativeState) {
+				data.LastNativePlayState = nativeState;
+				ShowMMR_Debug("base: play " + nativeState);
+			}
+		}
+		if (idle && data.historyReady && !data.storageBlocked && (!data.pending || data.pending.phase !== 3)) {
+			if (!data.InitialBaselineRequested || (!data.WasQueued && queued) || data.WasIdle === false) {
+				data.CaptureRequested = true;
+			}
+			if (data.CaptureRequested && ShowMMR_Refresh(true)) {
+				data.CaptureRequested = false;
+				data.InitialBaselineRequested = true;
+			}
+		}
+		if (data.WasIdle !== idle) ShowMMR_Debug("base: capture_idle=" + (idle ? 1 : 0));
+		data.WasIdle = idle;
+		data.WasQueued = queued;
+		ShowMMR_WatchError = "";
+	} catch (error) {
+		if (data) {
+			data.Candidate = null;
+			data.CaptureRequested = true;
+			data.Refreshing = false;
+		}
+		if (ShowMMR_WatchError !== String(error)) {
+			ShowMMR_WatchError = String(error);
+			ShowMMR_Debug("base: watch failed: " + error);
+		}
+	} finally {
+		$.Schedule(1.0, ShowMMR_WatchDashboard);
 	}
 };
 
-var ShowMMR_Refresh = function (force) {
+var ShowMMR_Refresh = function (force, manual) {
 	var data = ShowMMR_GetData();
-	if (!data || data.Refreshing) return;
-	if (!ShowMMR_IsDashboard()) {
-		ShowMMR_Debug("base: refresh skipped outside dashboard");
-		return;
-	}
-
-	var now = Date.now ? Date.now() : (new Date()).getTime();
+	if (!data || data.Refreshing || !ShowMMR_IsIdle()) return;
+	if (!manual && data.options && data.options.auto === false) return;
+	var now = Date.now();
 	if (!force && data.StartupGraceUntil && now < data.StartupGraceUntil) return;
 	if (data.LastRefreshAt && now - data.LastRefreshAt < 30000) return;
 	data.LastRefreshAt = now;
-
-	ShowMMR_Debug("base: refresh profile force=" + (force ? 1 : 0));
 	data.Refreshing = true;
-	data.retries = 8;
+	data.RefreshDeadline = now + 25000;
+	data.Candidate = null;
+	ShowMMR_Debug("base: refresh profile");
 	$.DispatchEvent("DOTAShowLocalProfileHeroStatsPage");
+	$.Schedule(26.0, function () {
+		// A missing/replaced profile layout must not lock out every future refresh.
+		if (data.Refreshing && Date.now() >= data.RefreshDeadline) {
+			data.Refreshing = false;
+			ShowMMR_Debug("base: profile refresh timed out status=" + (data.CaptureStatus || "no scan") +
+				" candidate_age=" + (data.Candidate ? Math.floor(Date.now() / 1000) - data.Candidate.since : "none"));
+		}
+	});
+	return true;
+};
+
+var ShowMMR_GameUIStateChanged = function (oldState, newState) {
+	var data = ShowMMR_GetData();
+	if (!data) return;
+	data.UIState = Number(newState);
+	ShowMMR_Debug("base: ui_state=" + data.UIState);
+	data.Candidate = null;
+	if (Number(newState) !== 3) { data.Refreshing = false; return; }
+	ShowMMR_LoadHistory(data);
+	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
+	if (oldState !== 1 && oldState !== 3) {
+		$.Schedule(12.0, function () { ShowMMR_Refresh(true); });
+	}
 };
 
 var ShowMMR_AccountUpdated = function () {
-	var data = ShowMMR_GetData();
-	if (!data) return;
-
-	data.historyReady = false;
-	ShowMMR_LoadHistory(data);
-	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
+	ShowMMR_LoadHistory(ShowMMR_GetData());
 };
 
 var ShowMMR_RankUpdated = function () {
-	ShowMMR_Debug("base: rank updated");
 	ShowMMR_AccountUpdated();
-	$.Schedule(5.0, ShowMMR_Refresh);
-};
-
-var ShowMMR_TableUpdated = function (_, key, value) {
-	var data = ShowMMR_GetData();
-	if (!data || !value) return;
-
-	ShowMMR_LoadHistory(data);
-	var epoch = parseInt(key, 10);
-	var mmr = ShowMMR_ToNumber(value["1"], -1);
-	var change = ShowMMR_ToNumber(value["2"], -1);
-	data.history[epoch] = [mmr, change];
-	data.historyReady = true;
-	if (epoch > (data.latestHistoryEpoch || 0) && mmr > 0) {
-		data.latestHistoryEpoch = epoch;
-		data.latestHistoryMMR = mmr;
-	}
-	ShowMMR_Debug("base: table update epoch=" + epoch + " mmr=" + mmr + " change=" + change);
+	$.Schedule(5.0, function () { ShowMMR_Refresh(false); });
 };
 
 var ShowMMR_Init = function () {
 	var data = ShowMMR_GetData();
-	if (!data) {
-		$.Schedule(1.0, ShowMMR_Init);
-		return;
-	}
-
+	if (!data) { $.Schedule(1.0, ShowMMR_Init); return; }
 	if (data.Installed) return;
 	data.Installed = true;
-	data.StartupGraceUntil = (Date.now ? Date.now() : (new Date()).getTime()) + 120000;
+	data.IsIdle = ShowMMR_IsIdle;
+	data.RefreshHistory = function () { return ShowMMR_Refresh(true, true); };
+	data.StartupGraceUntil = Date.now() + 120000;
 	ShowMMR_Debug("base: loaded");
-
+	ShowMMR_Debug("base: capabilities match_id=" + (typeof Game !== "undefined" && typeof Game.GetMatchID === "function") +
+		" game_state=" + (typeof Game !== "undefined" && typeof Game.GetState === "function") +
+		" client_console=" + (typeof GameInterfaceAPI !== "undefined" && typeof GameInterfaceAPI.ConsoleCommand === "function"));
 	$.RegisterForUnhandledEvent("DOTAGameUIStateChanged", ShowMMR_GameUIStateChanged);
 	$.RegisterForUnhandledEvent("DOTARankUpdated", ShowMMR_RankUpdated);
 	$.RegisterForUnhandledEvent("DOTAGameAccountClientUpdated", ShowMMR_AccountUpdated);
 	if (typeof CustomNetTables !== "undefined" && CustomNetTables.SubscribeNetTableListener) {
-		CustomNetTables.SubscribeNetTableListener("ShowMMR_update", ShowMMR_TableUpdated);
+		CustomNetTables.SubscribeNetTableListener("ShowMMR_history", ShowMMR_AccountUpdated);
 	}
-
 	ShowMMR_GameUIStateChanged(1, 3);
-	$.Schedule(45.0, function () {
-		ShowMMR_Refresh(true);
-	});
+	$.Schedule(1.0, ShowMMR_WatchDashboard);
+	$.Schedule(45.0, function () { ShowMMR_Refresh(true); });
 };

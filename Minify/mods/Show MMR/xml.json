@@ -1,4 +1,28 @@
 {
+  "panorama/layout/loading_screen_sidebar.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_match_probe.vjs_c"
+    }
+  ],
+  "panorama/layout/hud/dota_hud_pregame.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_match_probe.vjs_c"
+    }
+  ],
+  "panorama/layout/popups/popup_settings_reborn.xml": [],
+  "panorama/layout/dashboard_page_profile_battle_stats.xml": [
+    {
+      "action": "add_script",
+      "src": "s2r://panorama/scripts/show_mmr_battle_stats.vjs_c"
+    },
+    {
+      "action": "add_child",
+      "selector": "DOTAProfileBattleStatsPage",
+      "xml": "<Panel id='ShowMMRBattleBootstrap' hittest='false' onload='ShowMMR_BattleStart()' />"
+    }
+  ],
   "panorama/layout/base.xml": [
     {
       "action": "add_script",

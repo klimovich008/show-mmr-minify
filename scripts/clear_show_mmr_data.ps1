@@ -1,8 +1,14 @@
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [string[]]$Paths,
     [switch]$ClearAllJoySlots,
     [switch]$NoBackup
 )
+
+$ErrorActionPreference = 'Stop'
+if (-not $WhatIfPreference -and (Get-Process dota2 -ErrorAction SilentlyContinue)) {
+    throw "Close Dota before clearing bindings; it can rewrite them on exit."
+}
 
 if (-not $Paths) {
     $steam = (Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).SteamPath
@@ -18,8 +24,8 @@ if (-not $Paths) {
 }
 
 $joyLine = '^\s*"JOY([1-9]|[12][0-9]|3[0-2])"\s+"([^"]*)"\s*$'
-$showMmrValue = '^(showmmr_(pending(_v2)?|user):|[0-9]{8,}:\[[0-9-]+,[0-9-]+\](,[0-9]{8,}:\[[0-9-]+,[0-9-]+\])*)'
-$backupRoot = Join-Path (Get-Location) ("showmmr_backup_" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+$showMmrValue = '^(showmmr_user:[0-9]+:p1:[1-3]:[0-9]+:[0-9]{10}:[0-9]+:[0-9]+:[0-9]+:[0-3]|showmmr_(pending(_v2)?|user):[0-9,:\[\]-]+|[0-9]{8,}:\[[0-9]+,-?[0-9]+\](,[0-9]{8,}:\[[0-9]+,-?[0-9]+\])*)$'
+$backupRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("showmmr_backup_" + [guid]::NewGuid().ToString('N'))
 $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
 $filesChanged = 0
 $linesRemoved = 0
@@ -39,9 +45,9 @@ foreach ($path in $Paths) {
             $kept.Add($line)
         }
 
-        if ($removedHere -gt 0) {
+        if ($removedHere -gt 0 -and $PSCmdlet.ShouldProcess($file.FullName, "Remove $removedHere binding line(s)")) {
             if (-not $NoBackup) {
-                $relative = $file.FullName -replace '^[A-Za-z]:\\', ''
+                $relative = $file.FullName -replace ':', '' -replace '^\\+', ''
                 $backup = Join-Path $backupRoot $relative
                 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backup) | Out-Null
                 Copy-Item -LiteralPath $file.FullName -Destination $backup -Force

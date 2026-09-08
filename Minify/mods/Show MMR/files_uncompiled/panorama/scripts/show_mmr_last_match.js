@@ -8,6 +8,9 @@ var ShowMMR_LastDebugEnabled = true;
 
 var ShowMMR_LastDebug = function (message) {
 	if (!ShowMMR_LastDebugEnabled) return;
+	var dashboard = $("#Dashboard"), core = dashboard && dashboard.FindChildInLayoutFile("DashboardCore");
+	var data = core && core.Data.ShowMMR;
+	if (data && data.options && data.options.verbose === false) return;
 	$.Msg("[ShowMMR] " + message);
 };
 
@@ -22,7 +25,7 @@ var ShowMMR_LastRoot = function () {
 	var panel = $.GetContextPanel();
 	if (!ShowMMR_LastPanelValid(panel)) return null;
 	var parent = panel.GetParent ? panel.GetParent() : null;
-	ShowMMR_LastMatchPanel = panel.FindAncestor("DOTADashboardBackgroundLastMatch") || parent || panel;
+	ShowMMR_LastMatchPanel = panel.paneltype === "DOTADashboardBackgroundLastMatch" ? panel : panel.FindAncestor("DOTADashboardBackgroundLastMatch") || parent || panel;
 	return ShowMMR_LastMatchPanel;
 };
 
@@ -43,7 +46,7 @@ var ShowMMR_LastData = function (root) {
 };
 
 var ShowMMR_LastEpoch = function (panel, dateText, found) {
-	if (found) return found.epoch;
+	if (found && found.epoch > 0) return found.epoch;
 
 	var epoch = 0;
 	var gmt = $.Localize("{T:d:timestamp}", panel);
@@ -95,20 +98,18 @@ var ShowMMR_LastEpoch = function (panel, dateText, found) {
 var ShowMMR_LastMatchUpdated = function () {
 	var root = ShowMMR_LastRoot();
 	var data = ShowMMR_LastData(root);
-	if (!data || data.history == null || data.Refreshing_Last) {
+	if (!data || !data.historyReady || data.history == null) {
 		if (!data || data.history == null) ShowMMR_LastDebug("last_match: waiting for history");
 		return;
 	}
-
-	data.Refreshing_Last = true;
 
 	var stampDate = $.Localize("{T:s:timestamp}", root);
 	var stamp = "E" + (stampDate + $.Localize("{T:t:timestamp}{T:d:duration}", root)).replace(/\D/g, "");
 	var found = data.show[stamp];
 	var epoch = ShowMMR_LastEpoch(root, stampDate, found);
 
+	var known = data.history[epoch];
 	if (!found) {
-		var known = data.history[epoch];
 		found = {
 			label: "",
 			epoch: epoch,
@@ -117,17 +118,21 @@ var ShowMMR_LastMatchUpdated = function () {
 		};
 		data.show[stamp] = found;
 	}
+	found.epoch = epoch;
+	found.mmr = known ? known[0] : -1;
+	found.shift = known ? known[1] : -1;
 
-	if (!(found.mmr === -1 && found.shift === -1) && !(found.mmr === 0 && found.shift === 0)) {
+	var win = root.FindChildTraverse("Win");
+	var loss = root.FindChildTraverse("Loss");
+	if (!(data.options && data.options.show === false) && found.mmr > 0 && found.shift !== 0) {
 		var numbers = (found.shift > 0 ? "+" : "") + found.shift;
-		var win = root.FindChildTraverse("Win");
-		var loss = root.FindChildTraverse("Loss");
 		if (win) win.text = numbers;
 		if (loss) loss.text = numbers;
 		ShowMMR_LastDebug("last_match: applied epoch=" + epoch + " change=" + numbers);
+	} else {
+		if (win) win.text = $.Localize("#dota_profile_recent_game_result_win");
+		if (loss) loss.text = $.Localize("#dota_profile_recent_game_result_loss");
 	}
-
-	data.Refreshing_Last = false;
 };
 
 var ShowMMR_LastMatchInit = function () {
@@ -137,8 +142,8 @@ var ShowMMR_LastMatchInit = function () {
 	if (!data) return;
 	ShowMMR_LastDebug("last_match: loaded");
 
-	if (!data.LastMatchInstalled) {
-		data.LastMatchInstalled = true;
+	if (!root._showMMRInstalled) {
+		root._showMMRInstalled = true;
 		$.RegisterForUnhandledEvent("DOTABackgroundLastMatchUpdated", ShowMMR_LastMatchUpdated);
 	}
 	ShowMMR_LastMatchUpdated();

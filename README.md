@@ -2,6 +2,11 @@
 
 Minify-native port of AveYo's Dota 2 ShowMMR dashboard mod.
 
+Development status: pre-match baseline save and clean-restart restoration have
+passed live checks on one calibrated account.
+The current working tree is not a verified release. See [pending capture status](tests/PENDING.md)
+for remaining native match-ID, early-abandon, and account-isolation checks.
+
 The mod stores local ranked MMR history and shows known `MMR (change)` values in
 the Dota profile match-history list. It also replaces the last-match win/loss
 badge with the MMR change when that match is known.
@@ -11,9 +16,9 @@ badge with the MMR change when that match is known.
 ## Requirements
 
 - Dota 2
-- Minify 1.13 or newer
+- Minify 1.14rc6 (the integration checked by this version)
 - Dota 2 Workshop Tools installed, so Minify can compile Panorama JS/XML
-- Dota launch option: `-language minify`
+- Use the language/launch options configured by your Minify installation.
 
 ## Install
 
@@ -21,22 +26,33 @@ badge with the MMR change when that match is known.
 2. Copy `Minify/mods/Show MMR` into your Minify install:
 
    ```text
-   C:\Users\<you>\Downloads\Minify-v1.13-windows\mods\Show MMR
+   C:\Users\<you>\Downloads\Minify-v1.14rc6-windows\mods\Show MMR
    ```
 
 3. Open Minify.
 4. Open `Select Mods` and enable `Show MMR`.
 5. Click `Patch`.
-6. Start Dota 2 with `-language minify`.
+6. Start Dota 2 with Minify's configured language/launch options.
+
+Close Dota before patching. This version uses `xml.json` to patch the current
+Valve layouts; do not keep older `files_uncompiled/panorama/layout/*.xml` copies
+when upgrading the mod folder.
 
 ## How It Works
 
 - Panorama reads the visible ranked MMR value from your local profile page.
 - VScript stores recent ranked MMR history in Dota's local controller slot 3
   keybind file, using the original ShowMMR storage trick.
-- Opening the profile match-history page saves the newest ranked row with the
-  current visible MMR. If there is no previous stored row, this becomes a
-  zero-change baseline for the next ranked match.
+- Opening the local profile match-history page while idle saves current MMR and
+  the latest completed ranked epoch as a separate pending baseline. It does not
+  invent a result for the historical row used as the anchor.
+- Capture requires your visible local profile, a loaded account snapshot, and
+  stable ranked rows/MMR for three seconds. Lua validates the capture and computes
+  the delta; existing observations cannot be overwritten by later UI refreshes.
+- If MMR is unchanged or a reconnect is available, pending data is not consumed.
+  A win/loss result that conflicts with the MMR change also leaves pending intact.
+  A later completed ranked row must follow the saved anchor; gaps or calibration
+  leave the pending evidence uncertain rather than inventing a multi-match delta.
 - The profile match-history page is scanned while it is open, so if Dota reloads
   the rows the MMR labels are applied again.
 - Normal matches without known stored MMR data stay unchanged.
@@ -50,8 +66,11 @@ userdata:
 C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
-The runtime loader checks that default Steam userdata path first, then falls
-back to Dota's game cfg paths.
+Minify's patch hook supplies its actual Steam installation path to the runtime.
+The loader checks that userdata path first, then falls back to Dota's game cfg
+paths. Absolute `LoadKeyValues` support is an engine dependency, not a portable
+file-I/O guarantee. The default path above is used only if the generated path
+file is unavailable.
 
 The VScript loader reads the same data from Dota's account-specific game cfg
 search path:
@@ -65,16 +84,39 @@ same-account `showmmr_user:<account_id>` marker written by this mod. Unmarked
 shared slot files are ignored so another account's MMR history cannot leak into
 a fresh account.
 
+## Settings and Dota+ Discovery
+
+For development, an [optional local log collector](scripts/DEV_LOGS.md) can archive
+full Dota/Minify logs across restarts and start at Windows sign-in. It is entirely
+separate from the mod: no bindings are changed and the mod never reads its files.
+
+Settings > Show MMR displays the loaded account, baseline, pending state, and
+saved-match count. Refresh from history requests a capture while idle. Session
+toggles control result overlays, automatic history navigation, and detailed UI
+logs; these reset when Dota restarts. Lua storage diagnostics remain enabled.
+
+The development build includes a read-only Dota+ Battle Stats probe. It samples
+the first three loaded match rows and their column headings into console logs,
+without attaching unverified rows to account storage or writing bindings.
+Automatic historical import is not implemented. Match identity, account ownership,
+column semantics, and history completeness must be verified before backfilling.
+Live testing confirmed that Rank Change, Match ID, and Ranked labels are readable.
+Battle Stats does not set the regular profile's `LocalUser` flag on the tested
+account, and panel order is not visible date order; neither can be used to assign
+historical records safely.
+
 ## Binding Storage Findings
 
 The current mod uses Dota's local `user_keys_*_slot3.vcfg` controller bindings
 as a small persistent key-value store:
 
 - `JOY1` through `JOY31` store ranked MMR history.
-- `JOY32` stores the account marker.
-- Each history page currently stores up to 20 match records.
-- Current capacity is about `31 * 20 = 620` match records, plus one account
-  marker.
+- `JOY32` stores the account marker and versioned pending baseline.
+- Each history page stores at most 20 records and at most 500 characters.
+- Capacity is at most `31 * 20 = 620` matches, less for unusually wide numbers.
+  Oldest records are dropped from both memory and serialized history on overflow.
+- A malformed loaded page, conflicting account marker, or occupied non-mod
+  binding blocks writing. It is not automatically cleared or repaired.
 
 A stored history record currently looks like:
 
@@ -236,8 +278,8 @@ The account marker uses `JOY32` and looks like:
 
 - If the mod does not appear, confirm `Show MMR` is enabled in Minify and click
   `Patch` again.
-- If Dota uses the normal language files, confirm launch option
-  `-language minify`.
+- If Dota uses the normal language files, confirm Minify's configured output
+  language matches Dota's launch options.
 - If labels disappear after refreshing match history, patch again with this
   version; it keeps scanning while the profile page exists.
 - If no rows change, the mod probably has no stored history for those matches.
@@ -251,8 +293,33 @@ The account marker uses `JOY32` and looks like:
 - For live debugging, Dota's console log should contain lines starting with
   `[ShowMMR] base:`, `[ShowMMR] profile:`, `[ShowMMR] last_match:`, and
   `[ShowMMR] refresh`.
-- If Dota changes private dashboard XML, profile selectors, or
-  `dota_game_account_client_debug`, the mod may need another update.
+- If Dota changes private dashboard XML, profile selectors, or event APIs, the
+  mod may need another update.
+- `binding write queued` confirms a console write request, not a verified disk
+  flush. Check persistence after a clean exit/relaunch. Bindings are not a
+  transactional database and cannot guarantee recovery from a crash or Steam
+  Cloud replacing the file.
+- This still observes the current MMR label, not an authoritative per-match MMR
+  API. Delayed GC updates, recalibration, missing games, and forced termination
+  can leave gaps; historical changes cannot always be reconstructed.
+
+## Regression Checks
+
+```text
+node tests/panorama.js
+python -m pip install lupa defusedxml
+python -B tests/flow.py
+python -B tests/settings.py
+python -B tests/dev_logs.py
+```
+
+These run the actual Panorama scripts with mocked UI APIs and the actual storage
+script in Lua 5.1. They do not launch Dota or modify real bindings. In-game
+capture and clean-restart persistence still require an end-to-end game check.
+
+The cleanup script supports `-WhatIf`, refuses real cleanup while Dota runs,
+and backs up to a unique directory in the system temporary folder. Running it
+is not part of installation or upgrade.
 
 ## Attribution
 

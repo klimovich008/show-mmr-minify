@@ -1,0 +1,31 @@
+<Panel id="ShowMMRSettingsSection" class="SettingsSectionContainer" section="Show MMR" icon="s2r://panorama/images/control_icons/24px/check.vsvg" onload="ShowMMR_SettingsStart()">
+  <Panel class="SettingsSectionTitleContainer LeftRightFlow">
+    <Image class="SettingsSectionTitleIcon" texturewidth="48px" textureheight="48px" src="s2r://panorama/images/control_icons/24px/check.vsvg" />
+    <Label class="SettingsSectionTitle" text="Show MMR" />
+  </Panel>
+  <Panel class="SettingsSubsectionContainer" subsection="Status">
+    <Label class="SettingsSectionSubtitle" text="Status" />
+    <Panel class="SettingsSectionColumnContainer FilledBackground">
+      <Panel class="SettingsSectionColumn">
+        <Label id="ShowMMRAccount" class="SettingsSubLabel" text="Account: waiting" />
+        <Label id="ShowMMRStatus" class="SettingsSubLabel" text="Storage: waiting" />
+        <Label id="ShowMMRBaseline" class="SettingsSubLabel" text="Baseline: unavailable" />
+        <Label id="ShowMMRPending" class="SettingsSubLabel" text="Pending match: none" />
+        <Label id="ShowMMRHistory" class="SettingsSubLabel" text="History: waiting" />
+        <Button id="ShowMMRRefresh" class="ButtonBevel" onactivate="ShowMMR_SettingsRefresh()" style="width: 280px; margin-top: 12px;">
+          <Label text="Refresh from history" />
+        </Button>
+      </Panel>
+    </Panel>
+  </Panel>
+  <Panel class="SettingsSubsectionContainer" subsection="Session settings">
+    <Label class="SettingsSectionSubtitle" text="Session settings" />
+    <Panel class="SettingsSectionColumnContainer FilledBackground">
+      <Panel class="SettingsSectionColumn">
+        <ToggleButton id="ShowMMRShow" text="Show MMR in match results" onactivate="ShowMMR_SettingsChange('show', 'ShowMMRShow')" />
+        <ToggleButton id="ShowMMRAuto" text="Open history automatically for capture" onactivate="ShowMMR_SettingsChange('auto', 'ShowMMRAuto')" />
+        <ToggleButton id="ShowMMRVerbose" text="Detailed UI logs" onactivate="ShowMMR_SettingsChange('verbose', 'ShowMMRVerbose')" />
+      </Panel>
+    </Panel>
+  </Panel>
+</Panel>

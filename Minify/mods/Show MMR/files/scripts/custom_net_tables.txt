@@ -2,6 +2,6 @@
 {
 	custom_net_tables =
 	[
-		"ShowMMR_history", "ShowMMR_update",
+		"ShowMMR_history",
 	]
 }
