@@ -277,7 +277,7 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root, previous) {
 	if (!root.BHasClass("LocalUser") || !root.BHasClass("PageVisible") || data.UIState !== 3) return false;
 	if (!data.IsIdle || !data.IsIdle()) return ShowMMR_ProfileResetCandidate(data, root, "not idle");
 	var pending = data.pending;
-	if (pending && pending.phase === 3) {
+	if (pending && pending.phase === 3 && pending.reason !== 1) {
 		if (data.ReportedUncertainty !== data.historyRevision) {
 			data.ReportedUncertainty = data.historyRevision;
 			ShowMMR_ProfileDebug("profile: pending retained; uncertain reason=" + pending.reason);
@@ -288,24 +288,29 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root, previous) {
 	var mmr = ShowMMR_ProfileCaptureFromOpenPage(root, data);
 	if (calibrated < 0 || (calibrated === 1 && mmr < 1)) return ShowMMR_ProfileResetCandidate(data, root, "rating not ready calibrated=" + calibrated);
 	var now = ShowMMR_ProfileNow();
+	if (pending && pending.phase === 1 && row.epoch === pending.previous && mmr === pending.mmr && calibrated === 1) {
+		ShowMMR_ProfileCaptureStatus(data, "baseline acknowledged epoch=" + row.epoch);
+		data.CaptureRequested = false;
+		data.CaptureAttempts = 0;
+		return true;
+	}
 	var signature = [data.user, data.historyRevision, row.epoch, previous, mmr, calibrated, row.finished, row.outcome, row.match_id || "0"].join(":");
 	if (!data.Candidate || data.Candidate.root !== root || data.Candidate.signature !== signature) {
 		data.Candidate = {root: root, signature: signature, since: now};
 		return ShowMMR_ProfileCaptureStatus(data, "stabilizing " + signature);
 	}
 	if (now - data.Candidate.since < 3) return false;
-	if (pending && pending.phase === 1 && row.epoch === pending.previous && mmr === pending.mmr && calibrated === 1) {
-		ShowMMR_ProfileCaptureStatus(data, "baseline acknowledged epoch=" + row.epoch);
-		return true;
-	}
 	if (data.LastSubmission === signature && now - (data.LastSubmittedAt || 0) < 10) return false;
 	var name = "ShowMMR_Baseline";
 	var payload = {user: data.user, idle: 1, calibrated: calibrated, mmr: mmr, at: now, previous: row.epoch};
 	if (calibrated === 0) {
 		if (!pending) return false;
 	} else if (pending) {
-		if (row.epoch <= pending.previous || row.epoch < pending.at) return ShowMMR_ProfileCaptureStatus(data, "history not newer than baseline");
-		if (mmr === pending.mmr) return ShowMMR_ProfileCaptureStatus(data, "unchanged MMR epoch=" + row.epoch);
+		if (row.epoch <= pending.previous) return ShowMMR_ProfileCaptureStatus(data, "history not newer than baseline anchor");
+		// ponytail: bounded 30s overlap, matching coreinit.lua; reliable match IDs should replace this heuristic.
+		if (row.epoch < pending.at - 30) return ShowMMR_ProfileCaptureStatus(data, "history predates baseline by " + (pending.at - row.epoch) + "s (limit 30s)");
+		// A forward gap can rebase even at unchanged MMR; Lua never invents a delta for it.
+		if (mmr === pending.mmr && previous <= pending.previous) return ShowMMR_ProfileCaptureStatus(data, "unchanged MMR epoch=" + row.epoch);
 		if (!row.finished) return ShowMMR_ProfileCaptureStatus(data, "result unfinished epoch=" + row.epoch + " outcome=" + row.outcome);
 		name = "ShowMMR_Refresh";
 		payload.time = row.epoch;
@@ -317,12 +322,14 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root, previous) {
 	} else if (!row.finished) {
 		return false;
 	}
+	if (calibrated === 1) data.AwaitingCapture = {user: data.user, epoch: row.epoch, mmr: mmr, at: now, root: root,
+		change: pending && previous === pending.previous ? mmr - pending.mmr : null};
 	if (ShowMMR_ProfileSend(name, payload)) {
 		data.LastSubmission = signature;
 		data.LastSubmittedAt = now;
 		ShowMMR_ProfileDebug("profile: submitted " + name + " epoch=" + row.epoch + " mmr=" + mmr);
 		ShowMMR_ProfileCaptureStatus(data, "awaiting save acknowledgement epoch=" + row.epoch);
-	}
+	} else data.AwaitingCapture = null;
 	return false; // Wait for the pending/history snapshot, not event submission.
 };
 
@@ -339,6 +346,7 @@ var ShowMMR_ProfileScanRows = function () {
 		if (!data || !root.BHasClass("LocalUser") || !root.BHasClass("PageVisible") || root.visible === false || data.UIState !== 3) {
 			if (data && data.Candidate && data.Candidate.root === root) {
 				ShowMMR_ProfileResetCandidate(data, root, "page not active");
+				if (data.Refreshing && data.FinishCapture) data.FinishCapture(false);
 			}
 			return;
 		}
@@ -369,7 +377,7 @@ var ShowMMR_ProfileScanRows = function () {
 			ShowMMR_ProfileResetCandidate(data, root, "incomplete rows total=" + rows.length + " ranked=" + ranked.length);
 		}
 		if (data.Refreshing && (done || Date.now() >= data.RefreshDeadline)) {
-			data.Refreshing = false;
+			if (data.FinishCapture) data.FinishCapture(done);
 			$.DispatchEvent("DOTANavigateBack", root);
 		}
 		ShowMMR_ProfileLastScanError = "";

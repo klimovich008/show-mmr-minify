@@ -49,10 +49,19 @@ when upgrading the mod folder.
 - Capture requires your visible local profile, a loaded account snapshot, and
   stable ranked rows/MMR for three seconds. Lua validates the capture and computes
   the delta; existing observations cannot be overwritten by later UI refreshes.
-- If MMR is unchanged or a reconnect is available, pending data is not consumed.
+- For a consecutive result, unchanged MMR or an available reconnect leaves pending intact.
   A win/loss result that conflicts with the MMR change also leaves pending intact.
-  A later completed ranked row must follow the saved anchor; gaps or calibration
-  leave the pending evidence uncertain rather than inventing a multi-match delta.
+  After a forward history gap, a stable completed/calibrated observation advances
+  only the baseline, even if net MMR is unchanged. Missing results stay unknown;
+  the next consecutive game can be recorded normally. Existing history-gap locks
+  recover this way, but calibration and conflicting-match locks are retained.
+- Opening history is not a save acknowledgement. Interrupted automatic captures
+  retry with a five-second minimum interval, up to three attempts per request.
+  A fresh idle/queue transition, rating update, or manual refresh re-arms capture.
+  A matching complete save snapshot is acknowledged immediately, without another
+  three-second wait. Empty views retry after eight seconds; active stabilization
+  and in-flight saves retain the longer timeout. Snapshot acknowledgement is not
+  independent verification that the binding file has flushed to disk.
 - The profile match-history page is scanned while it is open, so if Dota reloads
   the rows the MMR labels are applied again.
 - Normal matches without known stored MMR data stay unchanged.

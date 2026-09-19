@@ -92,7 +92,79 @@ with subprocess.Popen(['node', '-e', worker], cwd=repo, stdin=subprocess.PIPE,
     # Several unseen ranked games do not become one fictitious +50 result.
     assert not observe(1783515000, 7050, 1783511000, 1783507000, classes=['Won'])
     observe(1783515004, 7050, 1783511000, 1783507000, classes=['Won'])
-    lua.execute('assert(ShowMMR.pending.phase==3 and ShowMMR.pending.reason==1 and ShowMMR.data[1783511000]==nil)')
+    lua.execute('assert(ShowMMR.pending.phase==1 and ShowMMR.pending.mmr==7050 and ShowMMR.data[1783511000]==nil)')
+    # Persist/reload the actual queued bindings: gap recovery cannot depend on JS memory.
+    for command in lua.globals().commands.values():
+        match = re.fullmatch(r'bindss 3 (JOY\d+) "(.*)";', command)
+        if match:
+            bindings[match[1]] = match[2]
+    lua.globals().files['cfg/user_keys_12345_slot3.vcfg'] = table({'bindings': bindings})
+    lua.execute("ShowMMR.user=nil; ShowMMR:Init({networkid='[U:1:12345]'})")
+    lua.execute('assert(ShowMMR.pending.mmr==7050 and ShowMMR.pending.previous==1783511000)')
+    # The next observed game is saved normally from the new baseline.
+    assert not observe(1783521000, 7075, 1783518000, 1783511000, classes=['Won'])
+    assert observe(1783521004, 7075, 1783518000, 1783511000, classes=['Won'])
+    lua.execute('assert(ShowMMR.data[1783518000][2]==25 and ShowMMR.data[1783511000]==nil)')
+
+    # A legacy gap-locked marker and zero net change cannot lock future capture.
+    lua.execute('''
+        ShowMMR.pending.phase, ShowMMR.pending.reason = 3, 1
+        ShowMMR:Publish()
+        commands={}
+    ''')
+    assert not observe(1783530000, 7075, 1783527000, 1783524000, classes=['Lost'])
+    assert observe(1783530004, 7075, 1783527000, 1783524000, classes=['Lost'])
+    lua.execute('assert(#commands==2 and ShowMMR.pending.phase==1 and ShowMMR.pending.previous==1783527000)')
+    lua.execute('assert(ShowMMR.data[1783527000]==nil)')
+    assert not observe(1783537000, 7040, 1783534000, 1783527000)
+    assert observe(1783537004, 7040, 1783534000, 1783527000)
+    lua.execute('assert(ShowMMR.data[1783534000][2]==-35)')
+
+    # Account 161969812 / match 8993049422: restored baseline captured at
+    # 12:12:48, row timestamp 12:12:37, connection 12:12:53, exit before finish.
+    lua.execute('''
+        files['cfg/user_keys_161969812_slot3.vcfg'] = {bindings={
+            JOY1='1789119392:[6317,-40]',
+            JOY32='showmmr_user:161969812:p1:1:6317:1789121568:1789119392:0:0:0'
+        }}
+        ShowMMR:Init({networkid='[U:1:161969812]'})
+        commands={}
+    ''')
+    # The small overlap must not bypass idle, completion, or zero-delta checks.
+    for when, rating, options in (
+        (1789124000, 6277, {'playClasses': ['CanReconnect']}),
+        (1789121558, 6277, {}),
+        (1789161960, 6317, {}),
+    ):
+        assert not observe(when, rating, 1789121557, 1789119392, **options)
+        assert not observe(when + 4, rating, 1789121557, 1789119392, **options)
+    lua.execute('assert(#commands==0 and ShowMMR.pending.at==1789121568)')
+    assert not observe(1789161969, 6277, 1789121557, 1789119392)
+    assert observe(1789161972, 6277, 1789121557, 1789119392)[0]['name'] == 'ShowMMR_Refresh'
+    lua.execute('''
+        assert(ShowMMR.data[1789121557][1]==6277 and ShowMMR.data[1789121557][2]==-40)
+        assert(ShowMMR.data[1789119392][1]==6317 and ShowMMR.data[1789119392][2]==-40)
+        assert(ShowMMR.pending.mmr==6277 and ShowMMR.pending.previous==1789121557)
+        commands={}
+    ''')
+    assert not observe(1789161980, 6277, 1789121557, 1789119392)
+    assert not observe(1789161984, 6277, 1789121557, 1789119392)
+    lua.execute('assert(#commands==0)')
+
+    # Exercise both sides of the overlap boundary through Panorama and Lua.
+    for overlap, accepted in ((31, False), (30, True)):
+        lua.execute('''
+            ShowMMR.user=nil
+            ShowMMR:Init({networkid='[U:1:161969812]'})
+            commands={}
+        ''')
+        epoch = 1789121568 - overlap
+        assert not observe(1789162000, 6277, epoch, 1789119392)
+        result = observe(1789162004, 6277, epoch, 1789119392)
+        assert bool(result) == accepted
+        assert (lua.globals().ShowMMR.data[epoch] is not None) == accepted
+        if not accepted:
+            lua.execute('assert(#commands==0 and ShowMMR.pending.at==1789121568)')
     node.stdin.close()
     assert node.wait(timeout=10) == 0
 

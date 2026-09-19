@@ -55,6 +55,10 @@ var ShowMMR_LoadHistory = function (data) {
 		data.Candidate = null;
 		data.InitialBaselineRequested = false;
 		data.CaptureRequested = false;
+		data.CaptureAttempts = 0;
+		data.Refreshing = false;
+		data.LastRefreshAt = 0;
+		data.AwaitingCapture = null;
 	}
 	data.user = String(state.user);
 	data.history = history;
@@ -66,6 +70,21 @@ var ShowMMR_LoadHistory = function (data) {
 	data.storageBlocked = Number(state.blocked) === 1;
 	data.pending = pending;
 	data.historyReady = true; // Empty is a valid, fully loaded account snapshot.
+	var awaiting = data.AwaitingCapture, saved = awaiting && history[awaiting.epoch];
+	if (!data.storageBlocked && awaiting && awaiting.user === data.user && pending && pending.phase === 1 &&
+		pending.previous === awaiting.epoch && pending.mmr === awaiting.mmr && pending.at === awaiting.at &&
+		(awaiting.change === null || (saved && saved[0] === awaiting.mmr && saved[1] === awaiting.change))) {
+		var returnToPrevious = data.Refreshing, root = awaiting.root;
+		data.AwaitingCapture = null;
+		ShowMMR_FinishCapture(data, true);
+		ShowMMR_Debug("base: save acknowledged epoch=" + awaiting.epoch);
+		// Only return from the profile we opened, never from a replacement/post-game view.
+		try {
+			if (returnToPrevious && root && (!root.IsValid || root.IsValid()) && root.visible !== false &&
+				root.BHasClass("LocalUser") && root.BHasClass("PageVisible") && ShowMMR_IsIdle())
+				$.DispatchEvent("DOTANavigateBack", root);
+		} catch (error) { ShowMMR_Debug("base: saved; profile no longer available: " + error); }
+	}
 	ShowMMR_Debug("base: history user=" + data.user + " count=" + count + " revision=" + state.revision + " blocked=" + state.blocked);
 	if (data.pending) ShowMMR_Debug("base: pending phase=" + data.pending.phase + " mmr=" + data.pending.mmr +
 		" previous=" + data.pending.previous + " at=" + data.pending.at + " match_id=" + data.pending.match_id);
@@ -91,6 +110,14 @@ var ShowMMR_IsIdle = function () {
 	return idleLabel !== "#dota_play" && idleLabel !== "" && $.Localize("{s:play_button_label}", play) === idleLabel;
 };
 
+var ShowMMR_FinishCapture = function (data, success) {
+	data.Refreshing = false;
+	data.Candidate = null;
+	data.CaptureRequested = !success;
+	if (success) data.CaptureAttempts = 0;
+	else ShowMMR_Debug("base: capture " + (data.CaptureAttempts >= 3 ? "retry limit reached; request retained" : "retry pending"));
+};
+
 var ShowMMR_WatchDashboard = function () {
 	var data = null;
 	try {
@@ -106,14 +133,13 @@ var ShowMMR_WatchDashboard = function () {
 				ShowMMR_Debug("base: play " + nativeState);
 			}
 		}
-		if (idle && data.historyReady && !data.storageBlocked && (!data.pending || data.pending.phase !== 3)) {
+		if (idle && data.historyReady && !data.storageBlocked && (!data.pending || data.pending.phase !== 3 || data.pending.reason === 1)) {
 			if (!data.InitialBaselineRequested || (!data.WasQueued && queued) || data.WasIdle === false) {
 				data.CaptureRequested = true;
-			}
-			if (data.CaptureRequested && ShowMMR_Refresh(true)) {
-				data.CaptureRequested = false;
+				data.CaptureAttempts = 0;
 				data.InitialBaselineRequested = true;
 			}
+			if (data.CaptureRequested) ShowMMR_Refresh(true);
 		}
 		if (data.WasIdle !== idle) ShowMMR_Debug("base: capture_idle=" + (idle ? 1 : 0));
 		data.WasIdle = idle;
@@ -138,21 +164,33 @@ var ShowMMR_Refresh = function (force, manual) {
 	var data = ShowMMR_GetData();
 	if (!data || data.Refreshing || !ShowMMR_IsIdle()) return;
 	if (!manual && data.options && data.options.auto === false) return;
+	if (!data.historyReady || data.storageBlocked || (data.pending && data.pending.phase === 3 && data.pending.reason !== 1)) return;
 	var now = Date.now();
 	if (!force && data.StartupGraceUntil && now < data.StartupGraceUntil) return;
-	if (data.LastRefreshAt && now - data.LastRefreshAt < 30000) return;
+	if (manual) data.CaptureAttempts = 0;
+	// ponytail: three attempts per request, five seconds apart; fresh transitions/manual refresh re-arm.
+	if (data.CaptureAttempts >= 3) return;
+	if (data.LastRefreshAt && now - data.LastRefreshAt < (data.CaptureRequested ? 5000 : 30000)) return;
+	data.CaptureRequested = true;
+	data.CaptureAttempts = (data.CaptureAttempts || 0) + 1;
 	data.LastRefreshAt = now;
 	data.Refreshing = true;
-	data.RefreshDeadline = now + 25000;
+	var deadline = data.RefreshDeadline = now + 25000;
 	data.Candidate = null;
 	ShowMMR_Debug("base: refresh profile");
 	$.DispatchEvent("DOTAShowLocalProfileHeroStatsPage");
+	$.Schedule(8.0, function () {
+		if (data.Refreshing && data.RefreshDeadline === deadline && !data.Candidate && !data.AwaitingCapture) {
+			ShowMMR_Debug("base: empty profile timed out after 8s");
+			ShowMMR_FinishCapture(data, false);
+		}
+	});
 	$.Schedule(26.0, function () {
 		// A missing/replaced profile layout must not lock out every future refresh.
-		if (data.Refreshing && Date.now() >= data.RefreshDeadline) {
-			data.Refreshing = false;
+		if (data.Refreshing && data.RefreshDeadline === deadline && Date.now() >= deadline) {
 			ShowMMR_Debug("base: profile refresh timed out status=" + (data.CaptureStatus || "no scan") +
 				" candidate_age=" + (data.Candidate ? Math.floor(Date.now() / 1000) - data.Candidate.since : "none"));
+			ShowMMR_FinishCapture(data, false);
 		}
 	});
 	return true;
@@ -178,6 +216,8 @@ var ShowMMR_AccountUpdated = function () {
 
 var ShowMMR_RankUpdated = function () {
 	ShowMMR_AccountUpdated();
+	var data = ShowMMR_GetData();
+	if (data) { data.CaptureRequested = true; data.CaptureAttempts = 0; }
 	$.Schedule(5.0, function () { ShowMMR_Refresh(false); });
 };
 
@@ -187,6 +227,7 @@ var ShowMMR_Init = function () {
 	if (data.Installed) return;
 	data.Installed = true;
 	data.IsIdle = ShowMMR_IsIdle;
+	data.FinishCapture = function (success) { ShowMMR_FinishCapture(data, success); };
 	data.RefreshHistory = function () { return ShowMMR_Refresh(true, true); };
 	data.StartupGraceUntil = Date.now() + 120000;
 	ShowMMR_Debug("base: loaded");

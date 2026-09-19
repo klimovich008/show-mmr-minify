@@ -161,7 +161,7 @@ function ShowMMR:SavePending()
 end
 
 function ShowMMR:Uncertain(reason)
-	if not self.pending or self.pending.phase == 3 then return end
+	if not self.pending or (self.pending.phase == 3 and (self.pending.reason ~= 1 or reason == 1)) then return end
 	self.pending.phase, self.pending.reason = 3, reason
 	print('[ShowMMR] pending retained: uncertain reason=' .. reason)
 	self:SavePending()
@@ -201,13 +201,30 @@ end
 
 function ShowMMR:Reconcile(e)
 	local p = self.pending
-	if not p or p.phase == 3 or tonumber(e.idle) ~= 1 or tonumber(e.finished) ~= 1
+	if not p or (p.phase == 3 and p.reason ~= 1) or tonumber(e.idle) ~= 1 or tonumber(e.finished) ~= 1
 		or tonumber(e.calibrated) ~= 1 then return end
 	local mmr, epoch = integer(e.mmr, 1, 100000), integer(e.time, 1000000000, 9999999999)
 	local previous, at = integer(e.previous, 0, 9999999999), integer(e.at, 1000000000, 9999999999)
-	if not mmr or not epoch or not previous or not at or epoch >= at or epoch < p.at then return end
+	if not mmr or not epoch or not previous or not at or epoch >= at or at < p.at
+		or epoch <= p.previous or previous >= epoch then return end
+	-- ponytail: allow 30s of row/observation overlap (11s observed before connection).
+	-- Match show_mmr_profile.js; replace this heuristic when reliable match IDs are available.
+	if epoch < p.at - 30 then return end
+	local outcome = integer(e.outcome, -1, 1)
+	if previous > p.previous then
+		if not outcome or outcome == 0 then return end
+		for time in pairs(self.data) do if time > epoch then return end end
+		if self.data[epoch] and self.data[epoch][1] ~= mmr then self:Uncertain(2); return end
+		-- Keep missing results unknown; only advance the baseline for future matches.
+		self.pending = {phase=1, mmr=mmr, at=at, previous=epoch, match_id='0', started=0, reason=0}
+		self.outcomeConflict = nil
+		print('[ShowMMR] gap rebase previous=' .. p.previous .. ' baseline_mmr=' .. p.mmr ..
+			' baseline_at=' .. p.at .. ' epoch=' .. epoch .. ' mmr=' .. mmr .. ' (no match delta saved)')
+		self:SavePending()
+		return
+	end
 	if mmr == p.mmr then return end -- GC can publish history before the new rating.
-	local change, outcome = mmr - p.mmr, integer(e.outcome, -1, 1)
+	local change = mmr - p.mmr
 	if not outcome or outcome == 0 or change * outcome < 0 then
 		if self.outcomeConflict ~= epoch then
 			print('[ShowMMR] reconcile waiting: missing/conflicting outcome epoch=' .. epoch)
@@ -224,7 +241,7 @@ function ShowMMR:Reconcile(e)
 	self.data[epoch] = {mmr, change}
 	-- The post-match observation becomes the next pre-match baseline only after reconciliation.
 	self.pending = {phase=1, mmr=mmr, at=at, previous=epoch, match_id='0', started=0, reason=0}
-	print('[ShowMMR] reconciled epoch=' .. epoch .. ' change=' .. change)
+	print('[ShowMMR] reconciled epoch=' .. epoch .. ' change=' .. change .. ' baseline_overlap=' .. math.max(0, p.at - epoch))
 	self:Save()
 end
 

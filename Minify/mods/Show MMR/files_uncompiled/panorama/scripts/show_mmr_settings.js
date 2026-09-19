@@ -21,7 +21,7 @@ var ShowMMR_SettingsChange = function (key, id) {
 	if (!data || !root || ["show", "auto", "verbose"].indexOf(key) < 0) return;
 	data.options = data.options || {};
 	data.options[key] = root.FindChildTraverse(id).checked;
-	if (key === "auto" && data.options.auto) data.CaptureRequested = true;
+	if (key === "auto" && data.options.auto) { data.CaptureRequested = true; data.CaptureAttempts = 0; }
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 

@@ -34,6 +34,7 @@ for (const script of ['base', 'profile', 'last_match']) {
     vm.runInContext(fs.readFileSync(path.join(scripts, `show_mmr_${script}.js`), 'utf8'), context);
 }
 data.IsIdle = context.ShowMMR_IsIdle;
+data.FinishCapture = success => context.ShowMMR_FinishCapture(data, success);
 const snapshot = (revision, records, user = '123', pending = {phase: 0}) => {
     tables.page1 = {user, revision, records};
     tables.state = {user, revision, pages: Object.keys(records).length ? 1 : 0,
@@ -328,5 +329,105 @@ const restartedCallbacks = scheduled.length;
 context.ShowMMR_MatchProbeStart();
 assert.equal(scheduled.length, restartedCallbacks, 'repeated transitions must not create parallel polling loops');
 $.GetContextPanel = getContext;
+// Sept 12: the owned history page disappears two seconds into stabilization.
+// Retry before ready-up, but never consider an event submission a completed save.
+data.options = {};
+data.Refreshing = false;
+data.LastRefreshAt = 0;
+data.InitialBaselineRequested = false;
+data.CaptureAttempts = 0;
+data.UIState = 3;
+now = 1789250253000;
+mmr = '6321';
+snapshot(20, {}, '161969812', {phase: 1, mmr: 6281, previous: 1789241774,
+    at: 1789246883, match_id: '0', started: 0, reason: 0});
+const retryRow = {isRanked: true, epoch: 1789246981, finished: true, outcome: 1};
+context.ShowMMR_WatchDashboard();
+assert.equal(data.CaptureRequested, true, 'opening history is not a save acknowledgement');
+assert.equal(data.CaptureAttempts, 1);
+const oldTimeout = scheduled[scheduled.length - 2];
+context.ShowMMR_ProfileAttachNewest(data, retryRow, root, 1789241774);
+now += 2000;
+root.visible = false;
+context.ShowMMR_ProfileScanRows();
+assert.equal(data.Refreshing, false, 'owned page interruption releases the active attempt');
+assert.equal(data.CaptureRequested, true);
+root.visible = true;
+context.ShowMMR_WatchDashboard();
+assert.equal(data.Refreshing, false, 'retry must be throttled');
+now += 3000;
+context.ShowMMR_WatchDashboard();
+assert.equal(data.Refreshing, true, 'retry after five seconds, not the old 30-second cooldown');
+assert.equal(data.CaptureAttempts, 2);
+const retryWrites = sent.length;
+context.ShowMMR_ProfileAttachNewest(data, retryRow, root, 1789241774);
+now += 3000;
+context.ShowMMR_ProfileAttachNewest(data, retryRow, root, 1789241774);
+assert.equal(sent.length, retryWrites + 1);
+assert.equal(data.CaptureRequested, true, 'submission is not acknowledgement');
+now += 18000;
+oldTimeout();
+assert.equal(data.Refreshing, true, 'old timeout must not end a newer attempt');
+snapshot(21, {' 1789246981': {'1': 6321, '2': 40}}, '161969812',
+    {phase: 1, mmr: 6321, previous: 1789246981, at: 1789250261, match_id: '0', started: 0, reason: 0});
+assert.equal(data.Refreshing, false, 'matching snapshot immediately completes the save');
+assert.equal(data.AwaitingCapture, null);
+assert.equal(context.ShowMMR_ProfileAttachNewest(data, retryRow, root, 1789241774), true);
+assert.equal(data.CaptureRequested, false, 'only confirmed baseline ends pending capture');
+assert.equal(data.CaptureAttempts, 0);
+data.Refreshing = false;
+// Bounded retries retain the request without endlessly navigating; manual refresh resets the budget.
+for (let attempt = 0; attempt < 3; attempt++) {
+    now += 30000;
+    assert.equal(context.ShowMMR_Refresh(true), true);
+    data.FinishCapture(false);
+}
+now += 30000;
+assert.equal(context.ShowMMR_Refresh(true), undefined);
+assert.equal(data.CaptureRequested, true);
+playClasses.add('InReadyUp');
+assert.equal(context.ShowMMR_Refresh(true, true), undefined, 'never retry through ready-up');
+playClasses.delete('InReadyUp');
+assert.equal(context.ShowMMR_Refresh(true, true), true);
+assert.equal(data.CaptureAttempts, 1);
+// Empty views retry early; active stabilization and in-flight saves keep their full window.
+data.FinishCapture(true);
+now += 30000;
+context.ShowMMR_Refresh(true);
+const emptyTimeout = scheduled[scheduled.length - 2];
+now += 8000;
+emptyTimeout();
+assert.equal(data.Refreshing, false, 'empty view need not wait 26 seconds');
+assert.equal(data.CaptureRequested, true);
+context.ShowMMR_Refresh(true);
+const activeTimeout = scheduled[scheduled.length - 2];
+data.Candidate = {root, since: Math.floor(now / 1000)};
+now += 8000;
+activeTimeout();
+assert.equal(data.Refreshing, true, 'early timeout must not reset a stabilizing row');
+data.Candidate = null;
+data.AwaitingCapture = {user: data.user, epoch: 1789256000, mmr: 6352, at: Math.floor(now / 1000), change: 31, root};
+activeTimeout();
+assert.equal(data.Refreshing, true, 'early timeout must not interrupt an in-flight save');
+const expected = {...data.AwaitingCapture};
+snapshot(22, {}, data.user, {phase: 1, mmr: expected.mmr, at: expected.at,
+    previous: expected.epoch, match_id: '0', started: 0, reason: 0});
+assert.equal(data.Refreshing, true, 'normal result acknowledgement also requires its history record');
+snapshot(23, {' 1789256000': {'1': 6352, '2': 31}}, data.user,
+    {phase: 1, mmr: expected.mmr, at: expected.at - 1, previous: expected.epoch, match_id: '0', started: 0, reason: 0});
+assert.equal(data.Refreshing, true, 'an older observation is not this submission acknowledgement');
+root.visible = false;
+tables.state = {user: data.user, revision: 24, pages: 1, count: 1, blocked: 0,
+    pending: {phase: 1, mmr: expected.mmr, at: expected.at, previous: expected.epoch, match_id: '0', started: 0, reason: 0}};
+delete tables.page1;
+context.ShowMMR_AccountUpdated();
+assert.equal(data.Refreshing, true, 'partial snapshots must not acknowledge a save');
+const navigationBeforeAck = events.length;
+snapshot(24, {' 1789256000': {'1': 6352, '2': 31}}, data.user,
+    {phase: 1, mmr: expected.mmr, at: expected.at, previous: expected.epoch, match_id: '0', started: 0, reason: 0});
+assert.equal(data.Refreshing, false, 'saved snapshot acknowledges even when the profile has disappeared');
+assert.equal(events.slice(navigationBeforeAck).includes('DOTANavigateBack'), false);
+assert.equal(data.CaptureRequested, false);
+root.visible = true;
 console.log('Panorama regression checks passed');
 }

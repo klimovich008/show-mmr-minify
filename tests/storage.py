@@ -76,7 +76,9 @@ lua.execute('''
     assert(ShowMMR.data[1783405000][2] == 25)
     ShowMMR:Refresh(nil, {user='123', time=1783407000, previous=1783406000, mmr=6075,
         idle=1, calibrated=1, finished=1, outcome=1, at=1783408000})
-    assert(ShowMMR.data[1783407000] == nil and ShowMMR.pending.phase == 3, 'gap retains evidence, never aggregate +50')
+    assert(ShowMMR.data[1783407000] == nil and ShowMMR.pending.phase == 1
+        and ShowMMR.pending.mmr == 6075 and ShowMMR.pending.previous == 1783407000,
+        'gap advances baseline without an aggregate result')
     assert(nettables.state.count == 1)
     assert(ShowMMR:ReadBindings({JOY1='1783404000:[6000,25]', JOY32='showmmr_user:123'})[1783404000][2] == 25)
     assert(ShowMMR:ReadBindings({JOY1='1783404000:[6000,'}) == nil)
@@ -168,7 +170,7 @@ lua.execute('''
     assert(ShowMMR:Marker() == marker)
 
     -- If a start notification was missed, a persisted pre-match anchor can still recover
-    -- exactly one later completed ranked row. A nonconsecutive row remains uncertain.
+    -- exactly one later completed ranked row. A gap only advances the baseline.
     ShowMMR:Init({networkid='[U:1:998]'})
     ShowMMR:Baseline(nil, {user='998', idle=1, calibrated=1, mmr=7000, at=1783500000, previous=1783404000})
     ShowMMR:Refresh(nil, {user='998', idle=1, calibrated=1, finished=1, outcome=-1, mmr=6975,
@@ -176,7 +178,7 @@ lua.execute('''
     assert(ShowMMR.data[1783501000][2] == -25)
     ShowMMR:Refresh(nil, {user='998', idle=1, calibrated=1, finished=1, outcome=1, mmr=7025,
         time=1783508000, previous=1783506000, at=1783510000})
-    assert(ShowMMR.pending.phase == 3 and ShowMMR.pending.reason == 1)
+    assert(ShowMMR.pending.phase == 1 and ShowMMR.pending.previous == 1783508000 and ShowMMR.pending.mmr == 7025)
     assert(ShowMMR.data[1783508000] == nil)
 
     files['C:/Program Files (x86)/Steam/userdata/997/570/local/cfg/user_keys_0_slot3.vcfg'] = {}
@@ -195,6 +197,60 @@ lua.execute('''
     ShowMMR:Refresh(nil, {user='997', idle=1, calibrated=1, finished=1, outcome=1, mmr=8000,
         time=1783501000, previous=1783404000, at=1783504000, match_id='18446744073709551615'})
     assert(#commands == writes and next(ShowMMR.data) == nil, 'calibration uncertainty must not become a match delta')
+''')
+
+lua.execute('''
+    -- Enforce overlap and freshness in Lua even if a caller bypasses Panorama.
+    ShowMMR:Init({networkid='[U:1:161969812]'})
+    ShowMMR:Baseline(nil, {user='161969812', idle=1, calibrated=1, mmr=6317,
+        at=1789121568, previous=1789119392})
+    commands = {}
+    local result = {user='161969812', idle=1, calibrated=1, finished=1, outcome=-1,
+        mmr=6277, time=1789121537, previous=1789119392, at=1789161972}
+    ShowMMR:Refresh(nil, result) -- 31s is outside the allowed overlap.
+    result.time = 1789119392 -- A known/older anchor is never a new match.
+    ShowMMR:Refresh(nil, result)
+    result.time, result.at = 1789121557, 1789121567 -- Observation older than pending.
+    ShowMMR:Refresh(nil, result)
+    result.at = result.time -- Future/current row relative to the observation.
+    ShowMMR:Refresh(nil, result)
+    assert(#commands==0 and ShowMMR.pending.at==1789121568 and next(ShowMMR.data)==nil)
+    result.time, result.at = 1789121538, 1789161972 -- Exactly 30s is accepted.
+    ShowMMR:Refresh(nil, result)
+    assert(ShowMMR.data[1789121538][2]==-40 and ShowMMR.pending.mmr==6277)
+''')
+
+lua.execute('''
+    -- Existing on-disk gap locks also recover, without inventing missing deltas.
+    files['cfg/user_keys_996_slot3.vcfg'] = {bindings={
+        JOY1='1789241774:[6281,40]',
+        JOY32='showmmr_user:996:p1:3:6281:1789246883:1789241774:0:0:1'
+    }}
+    ShowMMR:Init({networkid='[U:1:996]'})
+    commands = {}
+    local e = {user='996', idle=1, finished=1, calibrated=1, outcome=1,
+        time=1789250265, previous=1789246981, at=1789252522, mmr=6354}
+    e.user='997'; ShowMMR:Refresh(nil, e); e.user='996'
+    e.idle=0; ShowMMR:Refresh(nil, e); e.idle=1
+    e.finished=0; ShowMMR:Refresh(nil, e); e.finished=1
+    e.previous=e.time; ShowMMR:Refresh(nil, e); e.previous=1789246981
+    e.outcome=0; ShowMMR:Refresh(nil, e); e.outcome=1
+    assert(#commands==0 and ShowMMR.pending.phase==3)
+    ShowMMR:Refresh(nil, e)
+    assert(#commands==2 and commands[1]:match('^bindss 3 JOY32 '), 'gap writes only baseline, never history')
+    assert(ShowMMR.data[1789250265]==nil and ShowMMR.data[1789241774][1]==6281)
+    assert(ShowMMR.pending.phase==1 and ShowMMR.pending.mmr==6354)
+    -- A zero net gap is also a baseline-only operation, even if the last game was a loss.
+    e.time, e.previous, e.at, e.outcome = 1789260000, 1789257000, 1789263000, -1
+    ShowMMR:Refresh(nil, e)
+    assert(#commands==4 and ShowMMR.pending.previous==1789260000 and ShowMMR.data[1789260000]==nil)
+    -- Calibration uncertainty takes precedence over a legacy gap lock.
+    ShowMMR.user=nil; ShowMMR:Init({networkid='[U:1:996]'})
+    ShowMMR:Refresh(nil, {user='996', calibrated=0})
+    assert(ShowMMR.pending.phase==3 and ShowMMR.pending.reason==3)
+    local writes=#commands
+    ShowMMR:Refresh(nil, e)
+    assert(#commands==writes and ShowMMR.pending.reason==3)
 ''')
 
 # Exercise the patch hook against a fake Minify output folder.

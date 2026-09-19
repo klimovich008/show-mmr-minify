@@ -35,12 +35,21 @@ calibrated=1, outcome (1 win, -1 loss), mmr, time, previous, at, and a matching
 match_id if one was saved. Missing or sign-conflicting outcomes retain pending
 without writing or marking it permanently uncertain, allowing a later coherent
 observation to reconcile. This is a consistency check, not proof of GC freshness.
-The target must occur after baseline capture and have the exact preceding ranked
-epoch. If no start identity was captured, that temporal/adjacency evidence is the
-fallback. Missing, unfinished, unchanged, duplicate, or mismatched data never
-consumes the pending record. A successful result stores the computed delta and
+The target must have the exact preceding ranked epoch. Its row timestamp may
+overlap baseline capture by up to 30 seconds (11 seconds observed before connection);
+this is a bounded heuristic, not proof of match identity. If no start identity was
+captured, temporal/adjacency evidence is the fallback. Unfinished, unchanged,
+duplicate, or mismatched consecutive results do not consume pending.
+A successful result stores the computed delta and
 advances the pending baseline for the next match. Explicit calibrated=0 preserves
 pending evidence as uncertain; mere absence of calibration data does not mutate it.
+
+A forward gap (row.previous > pending.previous, and row.time > row.previous)
+uses the same stable idle/completed/calibrated observation to save only a new
+baseline via JOY32. No missing row or combined delta is added. This also works
+with unchanged net MMR and legacy phase-3/reason-1 markers. The old baseline and
+new anchor are logged; old pending is replaced, not archived in bindings.
+Calibration and conflict locks (reasons 3/2) cannot be rebased automatically.
 
 The three truth flags are assertions from the native-view adapter, not new Dota
 APIs. The Lua code cannot independently prove the client match is over.
@@ -55,7 +64,11 @@ panel in PlayButtonStartsSearching/FindingMatch or its native localized Play Dot
 button label (the side panel can be closed), with no in-game, connecting,
 disconnect, abandon, safe-leave, or reconnect flags. A watcher requests profile
 capture on initial readiness, queue entry, and return to idle; throttled requests
-are retained for retry. It does not block accepting a match if capture is late.
+are retained until baseline acknowledgement, not merely until opening history.
+An interrupted owned page releases the active attempt. Retries have a five-second
+minimum interval and a three-attempt budget; idle/queue transitions, rating updates,
+manual refresh, and re-enabling auto capture reset the budget. Old timeout callbacks
+cannot cancel a newer attempt. It does not block accepting a match if capture is late.
 
 Completion currently requires an exclusive Won/Lost row class, no Abandoned
 class, a valid positive duration, and an elapsed timestamp + duration. These
@@ -233,6 +246,6 @@ persists them. It is not evidence that a ranked-server custom event reaches the
 dashboard Lua writer. Do not reuse its higher-kill-count winner heuristic: kills
 do not determine Dota's winner. No files in that repo were changed.
 
-No automatic repair of uncertain pending state is provided yet. Do not clear it
-or infer individual deltas across a gap. Repeated known-good evidence or an explicit
-user-directed recovery path needs to be designed before release.
+History gaps can now advance the baseline under the implemented contract above;
+they do not reconstruct individual missing deltas. Calibration and conflicting
+match state still require investigation or explicit user-directed recovery.
