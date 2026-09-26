@@ -166,15 +166,17 @@ var ShowMMR_ProfileRecentGames = function (panel) {
 	var typeText = gameType[0].text;
 	if (!typeText) return null;
 	var isRanked = typeText === data._ranked || typeText.toLowerCase() === "ranked";
-	if (!isRanked) {
-		ShowMMR_ProfileApplyLabel(entry, result[0], data, {mmr: -1, shift: -1});
-		return {isRanked: false};
-	}
-
 	var stampDate = date[0].text;
 	var stamp = "E" + (stampDate + time[0].text + duration[0].text).replace(/\D/g, "");
 	var found = data.show[stamp];
 	var epoch = ShowMMR_ProfileEpoch(entry, stampDate, time[0].text, duration[0].text, found);
+	if (!isRanked) {
+		// Unranked epochs only show whether history has caught up with the last game.
+		if (!found) data.show[stamp] = {label: "", epoch: epoch, mmr: -1, shift: -1};
+		else found.epoch = epoch;
+		ShowMMR_ProfileApplyLabel(entry, result[0], data, {mmr: -1, shift: -1});
+		return {isRanked: false, epoch: epoch};
+	}
 	var known = data.history ? data.history[epoch] : null;
 
 	if (!found) {
@@ -272,7 +274,7 @@ var ShowMMR_ProfileCaptureFromOpenPage = function (root, data) {
 	return mmr;
 };
 
-var ShowMMR_ProfileAttachNewest = function (data, row, root, previous) {
+var ShowMMR_ProfileAttachNewest = function (data, row, root, previous, latest) {
 	if (!data || !data.historyReady || data.storageBlocked || !row || !row.isRanked || row.epoch <= 0) return ShowMMR_ProfileCaptureStatus(data, "storage/row not ready");
 	if (!root.BHasClass("LocalUser") || !root.BHasClass("PageVisible") || data.UIState !== 3) return false;
 	if (!data.IsIdle || !data.IsIdle()) return ShowMMR_ProfileResetCandidate(data, root, "not idle");
@@ -289,9 +291,16 @@ var ShowMMR_ProfileAttachNewest = function (data, row, root, previous) {
 	if (calibrated < 0 || (calibrated === 1 && mmr < 1)) return ShowMMR_ProfileResetCandidate(data, root, "rating not ready calibrated=" + calibrated);
 	var now = ShowMMR_ProfileNow();
 	if (pending && pending.phase === 1 && row.epoch === pending.previous && mmr === pending.mmr && calibrated === 1) {
+		latest = Math.max(latest || 0, row.epoch);
+		// After a game, an unchanged anchor usually means GC has not published the result yet.
+		// A newer unranked row proves history caught up and the anchor is still current.
+		if (data.ExpectResultAfter && latest < data.ExpectResultAfter) {
+			return ShowMMR_ProfileCaptureStatus(data, "waiting for match history after game; newest row=" + latest);
+		}
 		ShowMMR_ProfileCaptureStatus(data, "baseline acknowledged epoch=" + row.epoch);
 		data.CaptureRequested = false;
 		data.CaptureAttempts = 0;
+		data.ExpectResultAfter = 0;
 		return true;
 	}
 	var signature = [data.user, data.historyRevision, row.epoch, previous, mmr, calibrated, row.finished, row.outcome, row.match_id || "0"].join(":");
@@ -359,12 +368,14 @@ var ShowMMR_ProfileScanRows = function () {
 			ShowMMR_ProfileDebug("profile: rows=" + rows.length);
 		}
 
-		var ranked = [], incomplete = false;
+		var ranked = [], incomplete = false, latest = 0;
 		for (var i = 0; i < rows.length; i++) {
 			var row = ShowMMR_ProfileRecentGames(rows[i]);
 			if (!row || (row.isRanked && row.epoch <= 0)) incomplete = true;
 			if (row && row.isRanked && row.epoch > 0) ranked.push(row);
+			if (row && row.epoch > latest) latest = row.epoch;
 		}
+		if (latest > (data.LatestRowEpoch || 0)) data.LatestRowEpoch = latest;
 		ranked.sort(function (a, b) { return b.epoch - a.epoch; });
 		var newestRanked = ranked[0];
 		if (newestRanked && data.LastCandidateEpoch !== newestRanked.epoch) {
@@ -372,7 +383,7 @@ var ShowMMR_ProfileScanRows = function () {
 			ShowMMR_ProfileDebug("profile: newest ranked candidate epoch=" + newestRanked.epoch + " known=" + (newestRanked.known ? 1 : 0) + " match_id=" + (newestRanked.match_id || "unavailable"));
 		}
 		var done = false;
-		if (!incomplete) done = ShowMMR_ProfileAttachNewest(data, newestRanked, root, ranked.length > 1 ? ranked[1].epoch : 0);
+		if (!incomplete) done = ShowMMR_ProfileAttachNewest(data, newestRanked, root, ranked.length > 1 ? ranked[1].epoch : 0, latest);
 		else {
 			ShowMMR_ProfileResetCandidate(data, root, "incomplete rows total=" + rows.length + " ranked=" + ranked.length);
 		}

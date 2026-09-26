@@ -70,6 +70,18 @@ minimum interval and a three-attempt budget; idle/queue transitions, rating upda
 manual refresh, and re-enabling auto capture reset the budget. Old timeout callbacks
 cannot cancel a newer attempt. It does not block accepting a match if capture is late.
 
+Leaving the dashboard for a game records an expected-result time (two minutes
+before leaving). Until capture finishes, the unchanged anchor row plus
+unchanged MMR is "waiting for match history after game", not an acknowledgement.
+Previously this ended the request, so the result waited for the next queue or
+restart. That expectation extends the budget
+to six attempts (5s, 5s, 15s, 30s, 60s), then clears so later re-arms can
+acknowledge normally. Any listed row at or after the expected time, including
+unranked, satisfies it. A last-match panel update for an unrecorded epoch newer
+than the anchor (and than any profile row seen) re-arms capture once and expects
+that epoch. Whether Dota itself dispatches `DOTABackgroundLastMatchUpdated` when
+GC publishes a match still needs live confirmation.
+
 Completion currently requires an exclusive Won/Lost row class, no Abandoned
 class, a valid positive duration, and an elapsed timestamp + duration. These
 native signal assumptions still need live confirmation. Scanner exceptions are

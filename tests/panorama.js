@@ -429,5 +429,89 @@ assert.equal(data.Refreshing, false, 'saved snapshot acknowledges even when the 
 assert.equal(events.slice(navigationBeforeAck).includes('DOTANavigateBack'), false);
 assert.equal(data.CaptureRequested, false);
 root.visible = true;
+// Sept 26: returning from a game before GC publishes it must not end capture as
+// "baseline acknowledged"; that left the match unrecorded until the next queue.
+data.options = {};
+data.Refreshing = false;
+data.AwaitingCapture = null;
+data.CaptureRequested = false;
+data.CaptureAttempts = 0;
+data.ExpectResultAfter = 0;
+now = 1789300000000;
+mmr = '6400';
+const anchorEpoch = 1789290000;
+snapshot(30, {}, data.user, {phase: 1, mmr: 6400, previous: anchorEpoch, at: 1789295000, match_id: '0', started: 0, reason: 0});
+const enteredGame = Math.floor(now / 1000);
+context.ShowMMR_GameUIStateChanged(3, 2);
+assert.equal(data.ExpectResultAfter, enteredGame - 120, 'leaving the dashboard expects a new result');
+now += 2400000;
+context.ShowMMR_GameUIStateChanged(2, 3);
+const anchorRow = {isRanked: true, epoch: anchorEpoch, finished: true, outcome: 1};
+assert.equal(context.ShowMMR_ProfileAttachNewest(data, anchorRow, root, 0, anchorEpoch), false,
+    'unpublished post-game history is not a baseline acknowledgement');
+assert.match(data.CaptureStatus, /waiting for match history after game/);
+data.CaptureRequested = true;
+const retryGaps = [];
+let lastAttempt = now;
+for (let attempt = 0; attempt < 6; attempt++) {
+    let waited = 0;
+    while (context.ShowMMR_Refresh(true) !== true) {
+        now += 1000;
+        assert.ok(++waited < 120, 'post-game retry must eventually run');
+    }
+    retryGaps.push((now - lastAttempt) / 1000);
+    lastAttempt = now;
+    data.FinishCapture(false);
+}
+assert.deepEqual(retryGaps.slice(1), [5, 5, 15, 30, 60], 'post-game retries back off instead of stopping at three');
+assert.equal(data.ExpectResultAfter, 0, 'exhausted post-game budget stops treating the anchor as stale');
+now += 120000;
+assert.equal(context.ShowMMR_Refresh(true), undefined);
+assert.equal(data.CaptureRequested, true, 'request is retained for later re-arms');
+// A newer unranked row proves history caught up; the anchor is acknowledged.
+context.ShowMMR_GameUIStateChanged(3, 2);
+const turboStart = Math.floor(now / 1000);
+now += 1800000;
+context.ShowMMR_GameUIStateChanged(2, 3);
+const cells = text => [{text}];
+const historyRow = (type, date, epoch) => {
+    data.show['E' + (date + '12:00' + '30:00').replace(/\D/g, '')] = {label: '', epoch, mmr: -1, shift: -1};
+    return {FindAncestor: name => name === 'RecentGamesTable' ? {} : null, BHasClass: name => name === 'Won',
+        SetDialogVariableInt() {}, FindChildrenWithClassTraverse: name => ({GameTypeColumn: cells(type),
+            ResultColumn: [{text: 'Win'}], TimestampDate: cells(date), TimestampTime: cells('12:00'),
+            DurationColumn: cells('30:00')})[name]};
+};
+let historyRows = [historyRow('#dota_lobby_type_competitive', '2', anchorEpoch)];
+root.FindChildrenWithClassTraverse = () => historyRows;
+context.ShowMMR_ProfileScannerRunning = true;
+data.CaptureRequested = true;
+context.ShowMMR_ProfileScanRows();
+assert.equal(data.CaptureRequested, true, 'scanner keeps waiting while only the anchor is listed');
+historyRows = [historyRow('Turbo', '1', turboStart + 30), historyRows[0]];
+context.ShowMMR_ProfileScanRows();
+assert.equal(data.CaptureRequested, false, 'newer unranked row acknowledges the unchanged anchor');
+assert.equal(data.ExpectResultAfter, 0);
+assert.equal(data.LatestRowEpoch, turboStart + 30);
+root.FindChildrenWithClassTraverse = () => [];
+context.ShowMMR_ProfileScannerRunning = false;
+// Dota's last-match panel updating with an unrecorded, newer match re-arms capture once.
+data.CaptureAttempts = 3;
+const published = Math.floor(now / 1000) - 600;
+data.SignalLastMatch = epoch => context.ShowMMR_LastMatchSignal(data, epoch);
+context.ShowMMR_LastMatchPanel = {IsValid: () => true, FindAncestor: () => core, FindChildTraverse: () => null};
+data.show.E = {label: '', epoch: published, mmr: -1, shift: -1};
+context.ShowMMR_LastMatchUpdated();
+assert.equal(data.CaptureRequested, true, 'last-match update requests capture');
+assert.equal(data.CaptureAttempts, 0, 'last-match update resets the retry budget');
+assert.equal(data.ExpectResultAfter, published, 'profile must show the signalled match before acknowledging');
+assert.equal(context.ShowMMR_ProfileAttachNewest(data, anchorRow, root, 0, turboStart + 30), false);
+data.CaptureAttempts = 2;
+context.ShowMMR_LastMatchUpdated();
+assert.equal(data.CaptureAttempts, 2, 'the same last match signals only once');
+data.ExpectResultAfter = 0;
+context.ShowMMR_LastMatchSignal(data, anchorEpoch);
+context.ShowMMR_LastMatchSignal(data, turboStart + 30);
+context.ShowMMR_LastMatchSignal(data, Math.floor(now / 1000) + 3600);
+assert.equal(data.ExpectResultAfter, 0, 'anchor, already-listed and future epochs are not new results');
 console.log('Panorama regression checks passed');
 }

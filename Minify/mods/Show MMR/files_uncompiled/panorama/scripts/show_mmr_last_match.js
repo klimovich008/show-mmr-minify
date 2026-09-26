@@ -121,6 +121,7 @@ var ShowMMR_LastMatchUpdated = function () {
 	found.epoch = epoch;
 	found.mmr = known ? known[0] : -1;
 	found.shift = known ? known[1] : -1;
+	if (!known && epoch > 0 && data.SignalLastMatch) data.SignalLastMatch(epoch);
 
 	var win = root.FindChildTraverse("Win");
 	var loss = root.FindChildTraverse("Loss");

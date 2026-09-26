@@ -58,6 +58,12 @@ when upgrading the mod folder.
 - Opening history is not a save acknowledgement. Interrupted automatic captures
   retry with a five-second minimum interval, up to three attempts per request.
   A fresh idle/queue transition, rating update, or manual refresh re-arms capture.
+- After returning from a game, history that still ends at the saved baseline row
+  with unchanged MMR means Dota has not published the result yet; it is not
+  treated as an acknowledgement. Post-game capture gets three more attempts,
+  backing off 15, 30, and 60 seconds. A newer unranked row shows history has caught up.
+  When Dota's last-match panel shows an unrecorded match newer than the
+  baseline, capture is re-armed once for that match.
   A matching complete save snapshot is acknowledged immediately, without another
   three-second wait. Empty views retry after eight seconds; active stabilization
   and in-flight saves retain the longer timeout. Snapshot acknowledgement is not

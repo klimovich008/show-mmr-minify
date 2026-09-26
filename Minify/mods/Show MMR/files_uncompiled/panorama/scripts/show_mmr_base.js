@@ -59,6 +59,9 @@ var ShowMMR_LoadHistory = function (data) {
 		data.Refreshing = false;
 		data.LastRefreshAt = 0;
 		data.AwaitingCapture = null;
+		data.ExpectResultAfter = 0;
+		data.LatestRowEpoch = 0;
+		data.SignaledEpoch = 0;
 	}
 	data.user = String(state.user);
 	data.history = history;
@@ -110,12 +113,42 @@ var ShowMMR_IsIdle = function () {
 	return idleLabel !== "#dota_play" && idleLabel !== "" && $.Localize("{s:play_button_label}", play) === idleLabel;
 };
 
+// While a just-played match is expected, GC history can lag the dashboard by minutes.
+var ShowMMR_AttemptLimit = function (data) {
+	return data.ExpectResultAfter ? 6 : 3;
+};
+
+// ponytail: 5s, 5s, then 15s/30s/60s backoff for the extra post-match attempts.
+var ShowMMR_RetryDelay = function (data) {
+	var attempts = data.CaptureAttempts || 0;
+	return attempts < 3 ? 5000 : Math.min(60000, 15000 * Math.pow(2, attempts - 3));
+};
+
 var ShowMMR_FinishCapture = function (data, success) {
 	data.Refreshing = false;
 	data.Candidate = null;
 	data.CaptureRequested = !success;
-	if (success) data.CaptureAttempts = 0;
-	else ShowMMR_Debug("base: capture " + (data.CaptureAttempts >= 3 ? "retry limit reached; request retained" : "retry pending"));
+	if (success) {
+		data.CaptureAttempts = 0;
+		data.ExpectResultAfter = 0;
+	} else if (data.CaptureAttempts >= ShowMMR_AttemptLimit(data)) {
+		// Stop treating the anchor as stale; a later re-arm may acknowledge it normally.
+		data.ExpectResultAfter = 0;
+		ShowMMR_Debug("base: capture retry limit reached; request retained");
+	} else ShowMMR_Debug("base: capture retry pending");
+};
+
+// Dota's last-match panel updates when GC publishes a match; re-arm capture for it.
+var ShowMMR_LastMatchSignal = function (data, epoch) {
+	var pending = data.pending, now = Math.floor(Date.now() / 1000);
+	if (!data.historyReady || data.storageBlocked || !pending || (pending.phase === 3 && pending.reason !== 1)) return;
+	if (!(epoch > pending.previous) || epoch > now || (data.history && data.history[epoch]) ||
+		epoch <= (data.LatestRowEpoch || 0) || data.SignaledEpoch === epoch) return;
+	data.SignaledEpoch = epoch;
+	data.ExpectResultAfter = epoch;
+	data.CaptureRequested = true;
+	data.CaptureAttempts = 0;
+	ShowMMR_Debug("base: last match epoch=" + epoch + " is newer than baseline; capture requested");
 };
 
 var ShowMMR_WatchDashboard = function () {
@@ -168,9 +201,9 @@ var ShowMMR_Refresh = function (force, manual) {
 	var now = Date.now();
 	if (!force && data.StartupGraceUntil && now < data.StartupGraceUntil) return;
 	if (manual) data.CaptureAttempts = 0;
-	// ponytail: three attempts per request, five seconds apart; fresh transitions/manual refresh re-arm.
-	if (data.CaptureAttempts >= 3) return;
-	if (data.LastRefreshAt && now - data.LastRefreshAt < (data.CaptureRequested ? 5000 : 30000)) return;
+	// Bounded attempts per request; fresh transitions/manual refresh re-arm.
+	if (data.CaptureAttempts >= ShowMMR_AttemptLimit(data)) return;
+	if (data.LastRefreshAt && now - data.LastRefreshAt < (data.CaptureRequested ? ShowMMR_RetryDelay(data) : 30000)) return;
 	data.CaptureRequested = true;
 	data.CaptureAttempts = (data.CaptureAttempts || 0) + 1;
 	data.LastRefreshAt = now;
@@ -202,6 +235,10 @@ var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	data.UIState = Number(newState);
 	ShowMMR_Debug("base: ui_state=" + data.UIState);
 	data.Candidate = null;
+	if (Number(oldState) === 3 && Number(newState) !== 3 && !data.ExpectResultAfter) {
+		// ponytail: match rows can start before the dashboard is left; allow two minutes.
+		data.ExpectResultAfter = Math.floor(Date.now() / 1000) - 120;
+	}
 	if (Number(newState) !== 3) { data.Refreshing = false; return; }
 	ShowMMR_LoadHistory(data);
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
@@ -228,6 +265,7 @@ var ShowMMR_Init = function () {
 	data.Installed = true;
 	data.IsIdle = ShowMMR_IsIdle;
 	data.FinishCapture = function (success) { ShowMMR_FinishCapture(data, success); };
+	data.SignalLastMatch = function (epoch) { ShowMMR_LastMatchSignal(data, epoch); };
 	data.RefreshHistory = function () { return ShowMMR_Refresh(true, true); };
 	data.StartupGraceUntil = Date.now() + 120000;
 	ShowMMR_Debug("base: loaded");
