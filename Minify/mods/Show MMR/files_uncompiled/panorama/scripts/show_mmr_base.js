@@ -43,7 +43,8 @@ var ShowMMR_LoadHistory = function (data) {
 		started: Number(pending.started), reason: Number(pending.reason)
 	} : null;
 	// Lua revisions restart with the VM; only a complete, identical snapshot is a cache hit.
-	var snapshot = JSON.stringify([String(state.user), state.revision, Number(state.blocked), pending, history]);
+	var savedOptions = state.options || null;
+	var snapshot = JSON.stringify([String(state.user), state.revision, Number(state.blocked), pending, history, savedOptions]);
 	if (data.historySnapshot === snapshot) {
 		data.Candidate = candidate;
 		data.historyReady = true;
@@ -71,6 +72,12 @@ var ShowMMR_LoadHistory = function (data) {
 	data.ReportedUncertainty = null;
 	data.storageBlocked = Number(state.blocked) === 1;
 	data.pending = pending;
+	if (savedOptions) {
+		// Toggles saved per account in JOY31 by Lua.
+		data.options = data.options || {};
+		data.options.show = Number(savedOptions.show) !== 0;
+		data.options.auto = Number(savedOptions.auto) !== 0;
+	}
 	data.historyReady = true; // Empty is a valid, fully loaded account snapshot.
 	var awaiting = data.AwaitingCapture, saved = awaiting && history[awaiting.epoch];
 	if (!data.storageBlocked && awaiting && awaiting.user === data.user && pending && pending.phase === 1 &&
@@ -159,6 +166,16 @@ var ShowMMR_ResetBaseline = function (data) {
 	data.CaptureRequested = true;
 	data.CaptureAttempts = 0;
 	ShowMMR_Debug("base: new baseline requested; locked reason=" + pending.reason);
+	return true;
+};
+
+// Settings toggles: Lua saves them per account in JOY31 and echoes them back in the snapshot.
+var ShowMMR_SaveSettings = function (data) {
+	var options = data.options || {};
+	if (!data.historyReady || data.storageBlocked) return false;
+	if (typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return false;
+	GameEvents.SendCustomGameEventToServer("ShowMMR_Settings",
+		{user: data.user, show: options.show === false ? 0 : 1, auto: options.auto === false ? 0 : 1});
 	return true;
 };
 
@@ -279,6 +296,7 @@ var ShowMMR_Init = function () {
 	data.SignalLastMatch = function (epoch) { ShowMMR_LastMatchSignal(data, epoch); };
 	data.RefreshHistory = function () { return ShowMMR_Refresh(true, true); };
 	data.ResetBaseline = function () { return ShowMMR_ResetBaseline(data); };
+	data.SaveSettings = function () { return ShowMMR_SaveSettings(data); };
 	data.StartupGraceUntil = Date.now() + 120000;
 	ShowMMR_Debug("base: loaded");
 	ShowMMR_Debug("base: capabilities match_id=" + (typeof Game !== "undefined" && typeof Game.GetMatchID === "function") +

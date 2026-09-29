@@ -11,8 +11,8 @@ Show MMR is a Minify port of AveYo's ShowMMR dashboard mod.
 
 Storage notes:
 
-- Current storage uses `slot3` `JOY1`-`JOY31` for history and `JOY32` for an account marker.
-- Current readable format stores at most 620 match records (20 per page, 500 characters per page).
+- Current storage uses `slot3` `JOY1`-`JOY30` for history, `JOY31` for settings and `JOY32` for an account marker.
+- Current readable format keeps the newest 100 match records (20 per page, 500 characters per page).
 - Missing consecutive history starts a baseline, shown without a delta; unchanged MMR does not create a record.
 - Malformed or occupied storage blocks writing instead of being overwritten.
 - Minify supplies its actual Steam root at patch time; layouts are patched using xml.json, not frozen Valve XML copies.

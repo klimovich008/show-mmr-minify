@@ -22,6 +22,7 @@ var ShowMMR_SettingsChange = function (key, id) {
 	data.options = data.options || {};
 	data.options[key] = root.FindChildTraverse(id).checked;
 	if (key === "auto" && data.options.auto) { data.CaptureRequested = true; data.CaptureAttempts = 0; }
+	if (data.SaveSettings) data.SaveSettings();
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 
@@ -92,7 +93,7 @@ var ShowMMR_SettingsUpdate = function (root) {
 		if (ShowMMR_SettingsLocked(pending)) status += "; recording paused, use Start new baseline";
 		root.FindChildTraverse("ShowMMRPending").text = "Pending match: " + status;
 		root.FindChildTraverse("ShowMMRCapture").text = "Recording: " + (options.auto === false ? "off" : ShowMMR_SettingsCapture(data));
-		root.FindChildTraverse("ShowMMRHistory").text = "History: " + Object.keys(data.history || {}).length + " saved matches (keeps the newest 620)";
+		root.FindChildTraverse("ShowMMRHistory").text = "History: " + Object.keys(data.history || {}).length + " saved matches (keeps the newest 100)";
 		ShowMMR_SettingsResults(root, data.history || {});
 		root.FindChildTraverse("ShowMMRRefresh").enabled = usable && !!(data.IsIdle && data.IsIdle() && !data.Refreshing);
 		root.FindChildTraverse("ShowMMRReset").enabled = usable && ShowMMR_SettingsLocked(pending);

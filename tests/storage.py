@@ -89,7 +89,7 @@ lua.execute('''
     for i=1,700 do ShowMMR.data[1783404000+i] = {100000,-100000} end
     commands = {}
     ShowMMR:Save()
-    assert(nettables.state.count <= 620 and nettables.state.count > 500)
+    assert(nettables.state.count == 100, 'history keeps the newest 100 records')
     local reloaded = {JOY32='showmmr_user:123'}
     for _,command in ipairs(commands) do
         local key,value = command:match('^bindss 3 (JOY%d+) "(.*)";$')
@@ -98,8 +98,29 @@ lua.execute('''
             reloaded[key] = value
         end
     end
-    local saved = ShowMMR:ReadBindings(reloaded)
-    assert(saved and saved[1783404700] and not saved[1783404001])
+    assert(reloaded.JOY6 ~= '' and reloaded.JOY7 == '' and reloaded.JOY31 == 'showmmr_settings:1:1')
+    local saved, _, saved_options = ShowMMR:ReadBindings(reloaded)
+    assert(saved and saved[1783404700] and saved[1783404601] and not saved[1783404600])
+    assert(saved_options.show == 1 and saved_options.auto == 1)
+    -- Files from older builds may hold a history page in JOY31; it still loads.
+    assert(ShowMMR:ReadBindings({JOY31='1783404000:[6000,25]', JOY32='showmmr_user:123'})[1783404000][2] == 25)
+    assert(ShowMMR:ReadBindings({JOY31='showmmr_settings:2:1', JOY32='showmmr_user:123'}) == nil)
+    -- Settings persist per account and survive a reload.
+    ShowMMR.data = {}
+    commands = {}
+    ShowMMR:Settings(nil, {user='456', show=0, auto=1})
+    ShowMMR:Settings(nil, {user='123', show=0, auto=2})
+    assert(#commands == 0, 'foreign or invalid settings are ignored')
+    ShowMMR:Settings(nil, {user='123', show=0, auto=1})
+    assert(#commands == 2 and commands[1] == 'bindss 3 JOY31 "showmmr_settings:0:1";')
+    assert(nettables.state.options.show == 0)
+    ShowMMR:Settings(nil, {user='123', show=0, auto=1})
+    assert(#commands == 2, 'unchanged settings do not write')
+    files['cfg/user_keys_124_slot3.vcfg'] = {bindings={JOY31='showmmr_settings:0:0', JOY32='showmmr_user:124'}}
+    commands = {}
+    ShowMMR:Init({networkid = '[U:1:124]'})
+    assert(ShowMMR.options.show == 0 and ShowMMR.options.auto == 0 and nettables.state.options.auto == 0)
+    assert(commands[31] == 'bindss 3 JOY31 "showmmr_settings:0:0";', 'saved settings are re-asserted on load')
     files['cfg/user_keys_456_slot3.vcfg'] = {bindings={JOY1='+attack'}}
     ShowMMR:Init({networkid = '[U:1:456]'})
     assert(ShowMMR.blocked and nettables.state.count == 0)

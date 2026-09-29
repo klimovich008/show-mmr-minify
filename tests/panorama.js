@@ -309,6 +309,18 @@ assert.equal(context.ShowMMR_ResetBaseline({...locked, pending: {phase: 3, reaso
 assert.equal(context.ShowMMR_ResetBaseline({...locked, storageBlocked: true}), false);
 assert.equal(context.ShowMMR_ResetBaseline(locked), true);
 assert.deepEqual([names.at(-1), sent.length - resetStart, locked.CaptureRequested], ['ShowMMR_ResetBaseline', 1, true]);
+const savedOptions = data.options;
+tables.state = {...tables.state, options: {show: 0, auto: 1}};
+context.ShowMMR_LoadHistory(data);
+assert.deepEqual([data.options.show, data.options.auto], [false, true], 'saved per-account toggles load from Lua');
+const settingsStart = sent.length;
+assert.equal(context.ShowMMR_SaveSettings({historyReady: true, user: '456', options: {show: false}}), true);
+assert.equal(names.at(-1) + JSON.stringify(sent.at(-1)), 'ShowMMR_Settings{"user":"456","show":0,"auto":1}');
+assert.equal(context.ShowMMR_SaveSettings({historyReady: true, storageBlocked: true}), false);
+assert.equal(sent.length, settingsStart + 1);
+delete tables.state.options;
+context.ShowMMR_LoadHistory(data);
+data.options = savedOptions;
 const settingsCallbacks = scheduled.length;
 settingsRoot.IsValid = () => false;
 context.ShowMMR_SettingsUpdate(settingsRoot);

@@ -25,7 +25,7 @@
     </Panel>
   </Panel>
   <Panel class="SettingsSubsectionContainer" subsection="Settings">
-    <Label class="SettingsSectionSubtitle" text="Settings (reset when Dota restarts)" />
+    <Label class="SettingsSectionSubtitle" text="Settings" />
     <Panel class="SettingsSectionColumnContainer FilledBackground">
       <Panel class="SettingsSectionColumn">
         <ToggleButton id="ShowMMRShow" text="Show MMR in match results" onactivate="ShowMMR_SettingsChange('show', 'ShowMMRShow')" />

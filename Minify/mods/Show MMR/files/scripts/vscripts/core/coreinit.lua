@@ -9,6 +9,14 @@ local function integer(value, minimum, maximum)
 	return n and n == math.floor(n) and n >= minimum and n <= maximum and n or nil
 end
 
+-- slot3 layout: JOY1-JOY30 history pages, JOY31 settings, JOY32 account/pending marker.
+local MAX_RECORDS = 100 -- five pages; older builds kept up to 620 across JOY1-JOY31.
+local HISTORY_PAGES = 30
+
+local function settings_value(options)
+	return 'showmmr_settings:' .. options.show .. ':' .. options.auto
+end
+
 function ShowMMR:StorageUser(bindings)
 	local marker = tostring((bindings or {}).JOY32 or '')
 	return marker:match('^showmmr_user:(%d+)$') or marker:match('^showmmr_user:(%d+):p1:')
@@ -50,14 +58,18 @@ function ShowMMR:Marker()
 end
 
 function ShowMMR:ReadBindings(bindings)
-	local records, pending = {}, nil
+	local records, pending, options = {}, nil, nil
 	for i = 1, 32 do
 		local value = tostring(bindings['JOY' .. i] or '')
+		local show, auto = value:match('^showmmr_settings:([01]):([01])$')
 		if i == 32 then
 			local valid
 			pending, valid = self:ReadPending(value)
 			if not valid then return nil end
+		elseif i == 31 and show then
+			options = {show = tonumber(show), auto = tonumber(auto)}
 		elseif value ~= '' then
+			-- JOY31 may still hold an old history page; Save moves it into the newest 100.
 			-- Preserve the original numeric-key binding format, but decode strict JSON.
 			if not value:match('^%d+:%[') then return nil end
 			local quoted = value:gsub('(%d+):%[', '"%1":[')
@@ -73,7 +85,7 @@ function ShowMMR:ReadBindings(bindings)
 			end
 		end
 	end
-	return records, pending
+	return records, pending, options
 end
 
 function ShowMMR:Publish()
@@ -98,7 +110,7 @@ function ShowMMR:Publish()
 	-- Publish the header last; clients wait for every page of this revision.
 	CustomNetTables:SetTableValue('ShowMMR_history', 'state',
 		{user = self.user, revision = self.revision, pages = pages, count = count,
-		 blocked = self.blocked and 1 or 0, pending = self.pending or {phase=0}})
+		 blocked = self.blocked and 1 or 0, pending = self.pending or {phase=0}, options = self.options})
 end
 
 function ShowMMR:Init(e)
@@ -106,7 +118,8 @@ function ShowMMR:Init(e)
 	local user = tostring(e.networkid or ''):match('^%[U:1:(%d+)%]$')
 	if not integer(user, 1, 4294967295) or self.user == user then return end
 	self.user, self.data, self.blocked, self.pending = user, {}, false, nil
-	self.outcomeConflict = nil
+	self.options, self.outcomeConflict = {show = 1, auto = 1}, nil
+	local saved_options
 	local paths = LoadKeyValues('scripts/show_mmr_paths.txt') or {}
 	local steam = paths.steam_root or 'C:/Program Files (x86)/Steam'
 	local candidates = {
@@ -125,8 +138,9 @@ function ShowMMR:Init(e)
 				print('[ShowMMR] ignore shared bindings path=' .. candidate.path)
 			else
 				local records, pending
-				if type(bindings) == 'table' then records, pending = self:ReadBindings(bindings) end
+				if type(bindings) == 'table' then records, pending, saved_options = self:ReadBindings(bindings) end
 				if records then self.data, self.pending = records, pending else self.blocked = true end
+				if records and saved_options then self.options = saved_options end
 				print('[ShowMMR] load path=' .. candidate.path .. ' blocked=' .. tostring(self.blocked))
 				-- An existing account file, including an empty one, is authoritative.
 				break
@@ -135,7 +149,7 @@ function ShowMMR:Init(e)
 	end
 	-- Dota rewrites slot3 from its in-memory bindings on exit. On 2026-09-28 that copy lacked
 	-- JOY1-32 and a clean exit erased 10 records, so re-assert every successfully loaded history.
-	if not self.blocked and (next(self.data) or self.pending) then self:Save() else self:Publish() end
+	if not self.blocked and (next(self.data) or self.pending or saved_options) then self:Save() else self:Publish() end
 	print('[ShowMMR] init user=' .. user .. ' revision=' .. tostring(self.revision))
 	if not self.listener and CustomGameEventManager then
 		self.listener = true
@@ -143,6 +157,7 @@ function ShowMMR:Init(e)
 		CustomGameEventManager:RegisterListener('ShowMMR_Baseline', function(...) return self:Baseline(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_Begin', function(...) return self:Begin(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_ResetBaseline', function(...) return self:ResetBaseline(...) end)
+		CustomGameEventManager:RegisterListener('ShowMMR_Settings', function(...) return self:Settings(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_Probe', function(_, payload)
 			if type(payload) == 'table' then
 				print('[ShowMMR] dashboard received probe user=' .. self.user .. ' source=' .. tostring(payload.source):sub(1, 64))
@@ -187,6 +202,18 @@ function ShowMMR:Baseline(_, e)
 	for epoch in pairs(self.data) do if epoch > previous then return end end
 	self.pending = {phase=1, mmr=mmr, at=at, previous=previous, match_id='0', started=0, reason=0}
 	self:SavePending()
+end
+
+-- Settings toggles persist per account in JOY31.
+function ShowMMR:Settings(_, e)
+	if not self:OwnEvent(e) then return end
+	local show, auto = integer(e.show, 0, 1), integer(e.auto, 0, 1)
+	if not show or not auto or (show == self.options.show and auto == self.options.auto) then return end
+	self.options = {show = show, auto = auto}
+	SendToServerConsole('bindss 3 JOY31 "' .. settings_value(self.options) .. '";')
+	SendToServerConsole('writekeybindings | grep % ^;')
+	print('[ShowMMR] settings write queued show=' .. show .. ' auto=' .. auto)
+	self:Publish()
 end
 
 -- Settings "Start new baseline": drop only a locked (reason 2/3) pending state. History is kept;
@@ -269,24 +296,26 @@ function ShowMMR:Save()
 	local ordered, pages, page, kept, size = {}, {}, {}, {}, 0
 	for epoch in pairs(self.data) do table.insert(ordered, epoch) end
 	table.sort(ordered, function(a, b) return a > b end)
-	for _, epoch in ipairs(ordered) do
+	for index, epoch in ipairs(ordered) do
+		if index > MAX_RECORDS then break end
 		local record = self.data[epoch]
 		local text = epoch .. ':[' .. record[1] .. ',' .. record[2] .. ']'
 		if #page == 20 or size + #text + (#page > 0 and 1 or 0) > 500 then
 			table.insert(pages, table.concat(page, ','))
 			page, size = {}, 0
 		end
-		if #pages == 31 then break end
+		if #pages == HISTORY_PAGES then break end
 		size = size + #text + (#page > 0 and 1 or 0)
 		table.insert(page, text)
 		kept[epoch] = record
 	end
 	if #page > 0 then table.insert(pages, table.concat(page, ',')) end
-	-- ponytail: bounded newest-first history, at most 620 records; no compression.
+	-- ponytail: newest 100 records in plain text; unused pages are cleared.
 	self.data = kept
-	for i = 1, 31 do
+	for i = 1, HISTORY_PAGES do
 		SendToServerConsole('bindss 3 JOY' .. i .. ' "' .. (pages[i] or '') .. '";')
 	end
+	SendToServerConsole('bindss 3 JOY31 "' .. settings_value(self.options) .. '";')
 	SendToServerConsole('bindss 3 JOY32 "' .. self:Marker() .. '";')
 	SendToServerConsole('writekeybindings | grep % ^;')
 	print('[ShowMMR] binding write queued pages=' .. #pages)

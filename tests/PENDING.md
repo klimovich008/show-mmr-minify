@@ -8,7 +8,7 @@ early-leave recovery, and the before-start match-ID path remain unfinished.
 
 ## Implemented Contract
 
-- JOY1-JOY31 remain the existing history pages. No capacity reduction or new slots.
+- JOY1-JOY30 are history pages (newest 100 records kept); JOY31 holds settings. No new slots.
 - JOY32 accepts the legacy account marker or the following versioned marker:
   `showmmr_user:USER:p1:PHASE:MMR:AT:PREVIOUS:MATCH_ID:STARTED:REASON`.
 - PHASE: 1 baseline ready, 2 identified active match, 3 uncertain (retain evidence).

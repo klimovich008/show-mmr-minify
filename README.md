@@ -110,8 +110,8 @@ automatic recording is doing, saved-match count, the last saved result and the
 net change over the last 24 hours. Refresh from history requests a capture while
 idle. Start new baseline is enabled only when a conflict or rating change has
 locked the baseline; it clears that lock, keeps history, and lets the next idle
-history visit capture a fresh baseline without a delta. Session toggles control
-result overlays and automatic recording; they reset when Dota restarts. Console
+history visit capture a fresh baseline without a delta. Toggles control
+result overlays and automatic recording and are saved per account in `JOY31`. Console
 logging always stays on, since it is the only record for diagnosing captures.
 
 The development build includes a read-only Dota+ Battle Stats probe. It samples
@@ -129,10 +129,10 @@ historical records safely.
 The current mod uses Dota's local `user_keys_*_slot3.vcfg` controller bindings
 as a small persistent key-value store:
 
-- `JOY1` through `JOY31` store ranked MMR history.
+- `JOY1` through `JOY30` store ranked MMR history; `JOY31` stores the settings toggles.
 - `JOY32` stores the account marker and versioned pending baseline.
 - Each history page stores at most 20 records and at most 500 characters.
-- Capacity is at most `31 * 20 = 620` matches, less for unusually wide numbers.
+- Only the newest 100 matches are kept (about five pages). Files from older builds that used `JOY31` for history still load.
   Oldest records are dropped from both memory and serialized history on overflow.
 - A malformed loaded page, conflicting account marker, or occupied non-mod
   binding blocks writing. It is not automatically cleared or repaired.
@@ -236,7 +236,7 @@ MS1:show_mmr:01:k9F:T7q3aFQfB0az9Lx2_mP...
 Capacity estimates, assuming conservative bind values around 450-500
 characters:
 
-- Current readable slot3-only storage: about 620 records.
+- Current readable slot3-only storage: newest 100 records.
 - Compressed slot3-only storage: about 1,500-2,500 records.
 - Compressed slot1-slot3 storage: about 4,500-7,000 records.
 - More may be possible, but should not be promised without stress-testing Dota
