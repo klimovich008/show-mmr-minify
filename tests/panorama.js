@@ -309,6 +309,12 @@ assert.equal(context.ShowMMR_ResetBaseline({...locked, pending: {phase: 3, reaso
 assert.equal(context.ShowMMR_ResetBaseline({...locked, storageBlocked: true}), false);
 assert.equal(context.ShowMMR_ResetBaseline(locked), true);
 assert.deepEqual([names.at(-1), sent.length - resetStart, locked.CaptureRequested], ['ShowMMR_ResetBaseline', 1, true]);
+assert.equal(context.ShowMMR_T('day_value', '+5', 1, 1), '+5 (1W 1L)');
+context.ShowMMR_SettingsLoadStrings({GetAttributeString: () => '{"idle":"простой","day_value":"{0} ({1}/{2})"}'});
+assert.equal(context.ShowMMR_T('idle') + context.ShowMMR_T('day_value', '+5', 1, 1), 'простой+5 (1/1)', 'patch-time translations apply');
+context.ShowMMR_SettingsLoadStrings({GetAttributeString: () => '{"idle":"idle","day_value":"{0} ({1}W {2}L)"}'});
+context.ShowMMR_SettingsLoadStrings({GetAttributeString: () => 'not json'});
+assert.equal(context.ShowMMR_T('idle'), 'idle', 'bad strings keep the defaults');
 const savedOptions = data.options;
 tables.state = {...tables.state, options: {show: 0, auto: 1}};
 context.ShowMMR_LoadHistory(data);

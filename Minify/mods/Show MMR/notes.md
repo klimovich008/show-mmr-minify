@@ -1,28 +1,44 @@
 <!-- LANG:EN -->
-Show MMR is a Minify port of AveYo's ShowMMR dashboard mod.
 
-- Reads the visible ranked MMR value from the local profile stats page.
-- Stores a baseline by saving the newest ranked match-history row when the profile history page is opened.
-- Stores recent ranked MMR history locally in controller slot 3 bindings.
-- Loads history from `game/dota/cfg/user_keys_<account_id>_slot3.vcfg` with a `user_keys_0_slot3.vcfg` fallback.
-- Shows stored `MMR (change)` values in the profile recent-games list.
-- Replaces the last-match win/loss badge with the MMR change when history is known.
-- Logs every injected view with `[ShowMMR] base:`, `profile:`, or `last_match:`.
+Records your ranked MMR after every match and shows the MMR and change next to each game in your match history and on the last-match badge. History is saved per account in your key-binding settings (controller slot 3) and survives restarts. See Settings > Show MMR for status and options.
 
-Storage notes:
+!!: Requires Dota 2 Workshop Tools in Minify.
+!!: Valve can change the dashboard at any time; if MMR cannot be read, the normal UI is left alone.
 
-- Current storage uses `slot3` `JOY1`-`JOY30` for history, `JOY31` for settings and `JOY32` for an account marker.
-- Current readable format keeps the newest 100 match records (20 per page, 500 characters per page).
-- Missing consecutive history starts a baseline, shown without a delta; unchanged MMR does not create a record.
-- Malformed or occupied storage blocks writing instead of being overwritten.
-- Minify supplies its actual Steam root at patch time; layouts are patched using xml.json, not frozen Valve XML copies.
-- Local inspection showed `slot1` and `slot2` are usually empty, while `slot0` contains real user binds and should not be used for mod storage.
-- A future Minify-level storage helper could allocate `JOY1`-`JOY32` pages across slots 1-3, namespace pages per mod, and add checksums.
-- A compact delta/varint codec could conservatively raise Show MMR capacity to about 1,500-2,500 records on slot3 only, or about 4,500-7,000 records using slots 1-3.
+Port of AveYo's ShowMMR: https://github.com/AveYo/ShowMMR
 
-!!: Requires Dota 2 Workshop Tools in Minify because this mod patches Panorama XML and compiles Panorama JavaScript.
-!!: Valve can change private dashboard panels, events, or console output at any time. If MMR cannot be read, the mod will simply leave the normal UI alone.
-!!: Use at your own risk. This is a client dashboard/UI mod and does not touch gameplay logic.
+<!-- LANG:RU -->
 
-Original project: https://github.com/AveYo/ShowMMR
-Minify target format: https://github.com/Egezenn/dota2-minify
+Записывает ваш рейтинговый MMR после каждого матча и показывает MMR и его изменение рядом с каждой игрой в истории матчей и на значке последнего матча. История хранится отдельно для каждого аккаунта в настройках привязок клавиш (слот геймпада 3) и сохраняется после перезапуска. Состояние и параметры: Настройки > Show MMR.
+
+!!: Требуются Dota 2 Workshop Tools в Minify.
+!!: Valve может изменить главное меню в любой момент; если MMR не удаётся прочитать, обычный интерфейс не меняется.
+
+Порт ShowMMR от AveYo: https://github.com/AveYo/ShowMMR
+
+<!-- LANG:ZH-CN -->
+
+在每场比赛后记录你的天梯 MMR，并在比赛记录中的每场比赛旁以及上一场比赛徽章上显示 MMR 及其变化。记录按账号保存在键位设置（手柄槽位 3）中，重启后仍会保留。状态和选项见 设置 > Show MMR。
+
+!!: 需要在 Minify 中安装 Dota 2 Workshop Tools。
+!!: Valve 可能随时更改主界面；如果无法读取 MMR，将保持原有界面不变。
+
+移植自 AveYo 的 ShowMMR：https://github.com/AveYo/ShowMMR
+
+<!-- LANG:ES -->
+
+Registra tu MMR clasificatorio después de cada partida y muestra el MMR y su cambio junto a cada partida de tu historial y en la insignia de la última partida. El historial se guarda por cuenta en tus asignaciones de teclas (ranura 3 del mando) y se conserva al reiniciar. Consulta Ajustes > Show MMR para ver el estado y las opciones.
+
+!!: Requiere Dota 2 Workshop Tools en Minify.
+!!: Valve puede cambiar el menú principal en cualquier momento; si no se puede leer el MMR, la interfaz normal no se modifica.
+
+Adaptación de ShowMMR de AveYo: https://github.com/AveYo/ShowMMR
+
+<!-- LANG:PT -->
+
+Registra seu MMR ranqueado após cada partida e mostra o MMR e a variação ao lado de cada jogo no seu histórico de partidas e no emblema da última partida. O histórico é salvo por conta nas suas configurações de atalhos (slot 3 do controle) e é mantido após reiniciar. Veja Configurações > Show MMR para status e opções.
+
+!!: Requer Dota 2 Workshop Tools no Minify.
+!!: A Valve pode mudar o menu principal a qualquer momento; se o MMR não puder ser lido, a interface normal não é alterada.
+
+Adaptação do ShowMMR de AveYo: https://github.com/AveYo/ShowMMR

@@ -1,9 +1,32 @@
 """Add a native settings section without replacing Valve's settings layout."""
+import json
 from pathlib import Path
 
 import conditions
 import defusedxml.ElementTree as ET
 from core import base
+
+# Dota language names that share a translation.
+ALIASES = {'latam': 'spanish', 'portuguese': 'brazilian'}
+
+
+def language():
+    """Minify's Dota output language; English when unknown."""
+    try:
+        from core import config
+        return str(config.get('output_locale') or 'english').lower()
+    except Exception:
+        return 'english'
+
+
+def localize(section, strings):
+    """Translate tagged static labels and hand dynamic strings to show_mmr_settings.js."""
+    for element in section.iter():
+        key = element.attrib.pop('showmmr_key', None)
+        if key and key in strings:
+            element.set('text', strings[key])
+    if strings:
+        section.set('showmmr_strings', json.dumps(strings, ensure_ascii=False))
 
 
 def main():
@@ -22,5 +45,10 @@ def main():
         scripts = ET.fromstring('<scripts />')
         root.insert(0, scripts)
     scripts.append(ET.fromstring('<include src="s2r://panorama/scripts/show_mmr_settings.vjs_c" />'))
-    body.append(ET.parse(Path(__file__).with_name('menu.xml')).getroot())
+    here = Path(__file__).parent
+    section = ET.parse(here / 'menu.xml').getroot()
+    translations = json.loads((here / 'strings.json').read_text(encoding='utf-8'))
+    lang = language()
+    localize(section, translations.get(ALIASES.get(lang, lang), {}))
+    body.append(section)
     tree.write(target, encoding='utf-8')

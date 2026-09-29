@@ -4,7 +4,7 @@
     <Label class="SettingsSectionTitle" text="Show MMR" />
   </Panel>
   <Panel class="SettingsSubsectionContainer" subsection="Status">
-    <Label class="SettingsSectionSubtitle" text="Status" />
+    <Label class="SettingsSectionSubtitle" text="Status" showmmr_key="status_title" />
     <Panel class="SettingsSectionColumnContainer FilledBackground">
       <Panel class="SettingsSectionColumn">
         <Label id="ShowMMRAccount" class="SettingsSubLabel" text="Account: waiting" />
@@ -16,20 +16,20 @@
         <Label id="ShowMMRLast" class="SettingsSubLabel" text="Last result: none" />
         <Label id="ShowMMRToday" class="SettingsSubLabel" text="Last 24 hours: none" />
         <Button id="ShowMMRRefresh" class="ButtonBevel" onactivate="ShowMMR_SettingsRefresh()" style="width: 280px; margin-top: 12px;">
-          <Label text="Refresh from history" />
+          <Label text="Refresh from history" showmmr_key="refresh" />
         </Button>
         <Button id="ShowMMRReset" class="ButtonBevel" onactivate="ShowMMR_SettingsResetBaseline()" style="width: 280px; margin-top: 8px;">
-          <Label text="Start new baseline" />
+          <Label text="Start new baseline" showmmr_key="reset" />
         </Button>
       </Panel>
     </Panel>
   </Panel>
   <Panel class="SettingsSubsectionContainer" subsection="Settings">
-    <Label class="SettingsSectionSubtitle" text="Settings" />
+    <Label class="SettingsSectionSubtitle" text="Settings" showmmr_key="settings_title" />
     <Panel class="SettingsSectionColumnContainer FilledBackground">
       <Panel class="SettingsSectionColumn">
-        <ToggleButton id="ShowMMRShow" text="Show MMR in match results" onactivate="ShowMMR_SettingsChange('show', 'ShowMMRShow')" />
-        <ToggleButton id="ShowMMRAuto" text="Record results automatically (briefly opens your match history)" onactivate="ShowMMR_SettingsChange('auto', 'ShowMMRAuto')" />
+        <ToggleButton id="ShowMMRShow" text="Show MMR in match results" showmmr_key="show_toggle" onactivate="ShowMMR_SettingsChange('show', 'ShowMMRShow')" />
+        <ToggleButton id="ShowMMRAuto" text="Record results automatically (briefly opens your match history)" showmmr_key="auto_toggle" onactivate="ShowMMR_SettingsChange('auto', 'ShowMMRAuto')" />
       </Panel>
     </Panel>
   </Panel>
