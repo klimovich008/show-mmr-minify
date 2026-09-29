@@ -1,349 +1,80 @@
 # Show MMR for Minify
 
-Minify-native port of AveYo's Dota 2 ShowMMR dashboard mod.
+A [Minify](https://github.com/Egezenn/dota2-minify) port of AveYo's
+[ShowMMR](https://github.com/AveYo/ShowMMR) Dota 2 mod. It records your ranked
+MMR after every match and shows `MMR (change)` next to each ranked game in your
+match history, and the change on the last-match badge.
 
-Development status: pre-match baseline save and clean-restart restoration have
-passed live checks on one calibrated account.
-The current working tree is not a verified release. See [pending capture status](tests/PENDING.md)
-for remaining native match-ID, early-abandon, and account-isolation checks.
+![Show MMR match history](docs/match-history.png)
 
-The mod stores local ranked MMR history and shows known `MMR (change)` values in
-the Dota profile match-history list. It also replaces the last-match win/loss
-badge with the MMR change when that match is known.
-
-![Show MMR match history screenshot](assets/show-mmr-match-history.png)
+Development build: normal ranked captures and restart persistence work live;
+early-leave recovery and exact match identity are still open
+([open questions](docs/open-questions.md)).
 
 ## Requirements
 
-- Dota 2
-- Minify 1.14rc6 (the integration checked by this version)
-- Dota 2 Workshop Tools installed, so Minify can compile Panorama JS/XML
-- Use the language/launch options configured by your Minify installation.
+- Dota 2 with Dota 2 Workshop Tools (Minify compiles Panorama JS/XML with them)
+- Minify 1.14rc6 (the version this build is tested with)
 
 ## Install
 
-1. Download or clone this repo.
-2. Copy `Minify/mods/Show MMR` into your Minify install:
+1. Copy `Minify/mods/Show MMR` into your Minify `mods` folder.
+2. Close Dota, open Minify, enable **Show MMR** and click **Patch**.
+3. Start Dota with Minify's launch options.
 
-   ```text
-   C:\Users\<you>\Downloads\Minify-v1.14rc6-windows\mods\Show MMR
-   ```
+When upgrading, replace the whole `Show MMR` folder.
 
-3. Open Minify.
-4. Open `Select Mods` and enable `Show MMR`.
-5. Click `Patch`.
-6. Start Dota 2 with Minify's configured language/launch options.
+## Use
 
-Close Dota before patching. This version uses `xml.json` to patch the current
-Valve layouts; do not keep older `files_uncompiled/panorama/layout/*.xml` copies
-when upgrading the mod folder.
+Play ranked as usual. After each match, while you are idle on the dashboard, the
+mod briefly opens your match history, reads the new MMR and saves the result.
+The first visit on an account only saves a starting point (baseline); results
+are recorded from the next ranked match on.
 
-## How It Works
+**Settings > Show MMR** shows the account, baseline, what recording is doing,
+saved matches, the last result and the net change over the last 24 hours. It has:
 
-- Panorama reads the visible ranked MMR value from your local profile page.
-- VScript stores recent ranked MMR history in Dota's local controller slot 3
-  keybind file, using the original ShowMMR storage trick.
-- Opening the local profile match-history page while idle saves current MMR and
-  the latest completed ranked epoch as a separate pending baseline. It does not
-  invent a result for the historical row used as the anchor.
-- Capture requires your visible local profile, a loaded account snapshot, and
-  stable ranked rows/MMR for three seconds. Lua validates the capture and computes
-  the delta; existing observations cannot be overwritten by later UI refreshes.
-- For a consecutive result, unchanged MMR or an available reconnect leaves pending intact.
-  A win/loss result that conflicts with the MMR change also leaves pending intact.
-  After a forward history gap, a stable completed/calibrated observation advances
-  only the baseline, even if net MMR is unchanged. Missing results stay unknown;
-  the next consecutive game can be recorded normally. Existing history-gap locks
-  recover this way, but calibration and conflicting-match locks are retained.
-- Opening history is not a save acknowledgement. Interrupted automatic captures
-  retry with a five-second minimum interval, up to three attempts per request.
-  A fresh idle/queue transition, rating update, or manual refresh re-arms capture.
-- After returning from a game, history that still ends at the saved baseline row
-  with unchanged MMR means Dota has not published the result yet; it is not
-  treated as an acknowledgement. Post-game capture gets three more attempts,
-  backing off 15, 30, and 60 seconds. A newer unranked row shows history has caught up.
-  When Dota's last-match panel shows an unrecorded match newer than the
-  baseline, capture is re-armed once for that match.
-  A matching complete save snapshot is acknowledged immediately, without another
-  three-second wait. Empty views retry after eight seconds; active stabilization
-  and in-flight saves retain the longer timeout. Snapshot acknowledgement is not
-  independent verification that the binding file has flushed to disk.
-- The profile match-history page is scanned while it is open, so if Dota reloads
-  the rows the MMR labels are applied again.
-- Normal matches without known stored MMR data stay unchanged.
-- Console logging is intentionally verbose while this port is being stabilized:
-  search `console.log` for `[ShowMMR]`.
+- **Refresh from history**: check for a new result now.
+- **Start new baseline**: only enabled when a conflict or an MMR change without a
+  match has paused recording; clears that pause and keeps your history.
+- **Show MMR in match results** and **Record results automatically**, saved per account.
 
-The local storage file Dota writes is account-specific and lives under Steam
-userdata:
+The settings page follows Minify's output language: English, Russian, Simplified
+Chinese, Spanish and Brazilian Portuguese.
+
+History is kept per account (newest 100 matches) in Dota's controller slot 3
+key bindings:
 
 ```text
-C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
-```
-
-Minify's patch hook supplies its actual Steam installation path to the runtime.
-The loader checks that userdata path first, then falls back to Dota's game cfg
-paths. Absolute `LoadKeyValues` support is an engine dependency, not a portable
-file-I/O guarantee. The default path above is used only if the generated path
-file is unavailable.
-
-The VScript loader reads the same data from Dota's account-specific game cfg
-search path:
-
-```text
-<dota 2 beta>\game\dota\cfg\user_keys_<account_id>_slot3.vcfg
-```
-
-The mod also accepts `cfg/user_keys_0_slot3.vcfg` when `JOY32` contains the
-same-account `showmmr_user:<account_id>` marker written by this mod. Unmarked
-shared slot files are ignored so another account's MMR history cannot leak into
-a fresh account.
-
-## Settings and Dota+ Discovery
-
-For development, an [optional local log collector](scripts/DEV_LOGS.md) can archive
-full Dota/Minify logs across restarts and start at Windows sign-in. It is entirely
-separate from the mod: no bindings are changed and the mod never reads its files.
-
-Settings > Show MMR displays the loaded account, baseline, pending state, what
-automatic recording is doing, saved-match count, the last saved result and the
-net change over the last 24 hours. Refresh from history requests a capture while
-idle. Start new baseline is enabled only when a conflict or rating change has
-locked the baseline; it clears that lock, keeps history, and lets the next idle
-history visit capture a fresh baseline without a delta. Toggles control
-result overlays and automatic recording and are saved per account in `JOY31`. Console
-logging always stays on, since it is the only record for diagnosing captures.
-
-The development build includes a read-only Dota+ Battle Stats probe. It samples
-the first three loaded match rows and their column headings into console logs,
-without attaching unverified rows to account storage or writing bindings.
-Automatic historical import is not implemented. Match identity, account ownership,
-column semantics, and history completeness must be verified before backfilling.
-Live testing confirmed that Rank Change, Match ID, and Ranked labels are readable.
-Battle Stats does not set the regular profile's `LocalUser` flag on the tested
-account, and panel order is not visible date order; neither can be used to assign
-historical records safely.
-
-## Binding Storage Findings
-
-The current mod uses Dota's local `user_keys_*_slot3.vcfg` controller bindings
-as a small persistent key-value store:
-
-- `JOY1` through `JOY30` store ranked MMR history; `JOY31` stores the settings toggles.
-- `JOY32` stores the account marker and versioned pending baseline.
-- Each history page stores at most 20 records and at most 500 characters.
-- Only the newest 100 matches are kept (about five pages). Files from older builds that used `JOY31` for history still load.
-  Oldest records are dropped from both memory and serialized history on overflow.
-- A malformed loaded page, conflicting account marker, or occupied non-mod
-  binding blocks writing. It is not automatically cleared or repaired.
-
-A stored history record currently looks like:
-
-```text
-1783404065:[7657,38]
-```
-
-That format is intentionally readable and conservative, but not space optimal.
-
-Local inspection showed Dota creates these user key files:
-
-```text
-user_keys_0_slot0.vcfg
-user_keys_0_slot1.vcfg
-user_keys_0_slot2.vcfg
-user_keys_0_slot3.vcfg
-```
-
-On the tested machine:
-
-- `slot0` contains real user binds, such as `toggleconsole`, so it should be
-  treated as off-limits.
-- `slot1` and `slot2` were empty across sampled accounts.
-- `slot3` was empty except for this mod's storage.
-
-So a future shared Minify storage layer could conservatively use `slot1`,
-`slot2`, and `slot3`, while avoiding `slot0`. With `JOY1` through `JOY32` in
-three slots, this gives 96 possible binding cells. Reserving one cell for a
-directory leaves about 95 data pages.
-
-Candidate binding names seen in Dota key files include keyboard keys, mouse
-buttons, gamepad buttons, analog axes, and joystick keys. For storage,
-`JOY1` through `JOY32` are the least invasive because keyboard, mouse, and
-gamepad names can collide with real player controls.
-
-## Shared Storage Design Notes
-
-If this becomes a Minify upstream feature, Minify should own allocation instead
-of letting each mod claim random keys.
-
-Example mod manifest:
-
-```json
-{
-  "storage": {
-    "id": "show_mmr",
-    "pages": 24,
-    "codec": "vlq-delta-v1"
-  }
-}
-```
-
-Example physical layout:
-
-```text
-slot3 JOY32 = "MS1:acct=161969812;show_mmr=s1:1-24;probe=s1:25-28;crc=ab12"
-slot1 JOY1  = "MS1:show_mmr:01:crc:<payload>"
-slot1 JOY2  = "MS1:show_mmr:02:crc:<payload>"
-```
-
-Rules for a shared binding-backed store:
-
-- Minify owns page allocation.
-- Every mod gets a stable namespace/id.
-- Mods never write unallocated binding cells.
-- Every page includes storage version, mod id, page number, and checksum.
-- Unknown mod pages are ignored, not deleted.
-- If the directory corrupts, pages should still be scannable by prefix.
-
-This is still Dota runtime storage. Minify can generate helpers and allocate
-pages at patch time, but runtime writes still need an in-Dota writable channel
-such as `bindss` plus `writekeybindings`.
-
-## Compression Notes
-
-The current readable format stores repeated absolute timestamps and MMR values.
-A compact Show MMR codec can store the same data as deltas:
-
-- Store the first timestamp once.
-- Store the first MMR once.
-- Store later match times as deltas from the previous match.
-- Store MMR changes as signed small integers.
-- Add a full MMR checkpoint every 16 or 32 records.
-- Encode integers with a small base64url/varint alphabet.
-
-Conceptual data:
-
-```text
-t0=1783404065,m0=7657 | dt,chg | dt,chg | dt,chg
-```
-
-Actual compact page shape:
-
-```text
-MS1:show_mmr:01:k9F:T7q3aFQfB0az9Lx2_mP...
-```
-
-Capacity estimates, assuming conservative bind values around 450-500
-characters:
-
-- Current readable slot3-only storage: newest 100 records.
-- Compressed slot3-only storage: about 1,500-2,500 records.
-- Compressed slot1-slot3 storage: about 4,500-7,000 records.
-- More may be possible, but should not be promised without stress-testing Dota
-  bind string truncation and `LoadKeyValues` behavior.
-
-The practical target for a shared storage layer should be about 5,000 records
-per account before requiring external tooling or a different persistence
-channel.
-
-## Usage
-
-Before a ranked match, open Profile -> History -> Match History once. This saves
-the current newest ranked row as the baseline. After the ranked match, open the
-same history page again; the newest ranked row should be saved with the MMR
-change from that baseline.
-
-Once the mod has stored data for a match, known ranked rows show values like:
-
-```text
-6,000 (+25)
-5,975 (-25)
-```
-
-Rows with no stored MMR history keep Dota's normal `Win` or `Loss` result text.
-
-## Manual Test Seed
-
-For debugging without waiting for a new ranked result, you can seed local data
-manually. Close Dota first, then edit:
-
-```text
-C:\Program Files (x86)\Steam\userdata\<steam_user_id>\570\local\cfg\user_keys_0_slot3.vcfg
-```
-
-Example:
-
-```text
-"config"
-{
-	"bindings"
-	{
-		"JOY1" "1700000000:[6000,25],1699996400:[5975,-25]"
-	}
-}
-```
-
-The key is the match timestamp epoch. The value is `[mmr,change]`. Start Dota,
-open your profile match history, and matching ranked rows should show the seeded
-MMR values.
-
-The account marker uses `JOY32` and looks like:
-
-```text
-"JOY32" "showmmr_user:1665041461"
+C:\Program Files (x86)\Steam\userdata\<account_id>\570\local\cfg\user_keys_0_slot3.vcfg
 ```
 
 ## Troubleshooting
 
-- If the mod does not appear, confirm `Show MMR` is enabled in Minify and click
-  `Patch` again.
-- If Dota uses the normal language files, confirm Minify's configured output
-  language matches Dota's launch options.
-- If labels disappear after refreshing match history, patch again with this
-  version; it keeps scanning while the profile page exists.
-- If no rows change, the mod probably has no stored history for those matches.
-  Open Profile -> History -> Match History before a ranked match to seed the
-  baseline, then open it again after the match.
-- `Script failed to LoadKeyValues cfg/user_keys_<account_id>_slot3.vcfg` is
-  normal on a fresh account before any ShowMMR history exists.
-- If logs say `ignore shared bindings`, the shared slot belongs to another
-  account or an older unmarked build; open match history with this build active
-  or seed the account-specific file manually.
-- For live debugging, Dota's console log should contain lines starting with
-  `[ShowMMR] base:`, `[ShowMMR] profile:`, `[ShowMMR] last_match:`, and
-  `[ShowMMR] refresh`.
-- If Dota changes private dashboard XML, profile selectors, or event APIs, the
-  mod may need another update.
-- `binding write queued` confirms a console write request, not a verified disk
-  flush. Check persistence after a clean exit/relaunch. Bindings are not a
-  transactional database and cannot guarantee recovery from a crash or Steam
-  Cloud replacing the file.
-- This still observes the current MMR label, not an authoritative per-match MMR
-  API. Delayed GC updates, recalibration, missing games, and forced termination
-  can leave gaps; historical changes cannot always be reconstructed.
+- **Nothing shows:** check Show MMR is enabled in Minify and patch again. Rows
+  without a saved result keep Dota's normal Win/Loss text.
+- **Recording paused:** use **Start new baseline** in Settings.
+- **Logs:** search Dota's `console.log` (launch with `-condebug`) for `[ShowMMR]`.
+- Missed games, recalibration or a crash can leave gaps; the mod never invents a
+  missing result.
+- `tools/clear_show_mmr_data.ps1` removes the mod's saved data (with a backup;
+  supports `-WhatIf`). It is never needed for install or upgrade.
 
-## Regression Checks
+## More
+
+- [How it works](docs/how-it-works.md): capture rules, storage format, manual test data
+- [Development](docs/development.md): tests, logs, Dota+ probe
+- [Storage ideas](docs/storage-ideas.md): unimplemented designs for larger storage
+
+## Repository layout
 
 ```text
-node tests/panorama.js
-python -m pip install lupa defusedxml
-python -B tests/flow.py
-python -B tests/settings.py
-python -B tests/dev_logs.py
+Minify/mods/Show MMR/   the mod, exactly as Minify installs it
+tests/                  regression tests (no Dota needed)
+tools/                  data cleanup and optional development log collector
+docs/                   documentation
 ```
 
-These run the actual Panorama scripts with mocked UI APIs and the actual storage
-script in Lua 5.1. They do not launch Dota or modify real bindings. In-game
-capture and clean-restart persistence still require an end-to-end game check.
+## License
 
-The cleanup script supports `-WhatIf`, refuses real cleanup while Dota runs,
-and backs up to a unique directory in the system temporary folder. Running it
-is not part of installation or upgrade.
-
-## Attribution
-
-Original project: https://github.com/AveYo/ShowMMR
-
-Minify: https://github.com/Egezenn/dota2-minify
-
-ShowMMR code is distributed under the MIT license. See `LICENSE`.
+MIT, see `LICENSE`. Original project: https://github.com/AveYo/ShowMMR

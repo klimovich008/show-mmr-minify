@@ -228,7 +228,7 @@ identity/guard evidence needed to prove that this was their specific cause.
 No changes to binding serialization, zero-change suppression, or the helper dependency.
 
 An optional development-only collector is now available; see
-[its operating guide](../scripts/DEV_LOGS.md). It archives raw Dota/Minify logs
+[its operating guide](dev-logs.md). It archives raw Dota/Minify logs
 at Windows sign-in for debugging. The mod does not read its files. It is not a
 match-ID transport or runtime dependency, and does not close any gate below.
 

@@ -9,7 +9,7 @@ import tempfile
 import time
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts/collect_dev_logs.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "tools/collect_dev_logs.py"
 spec = importlib.util.spec_from_file_location("collector", SCRIPT)
 collector = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(collector)

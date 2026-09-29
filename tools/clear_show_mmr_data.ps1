@@ -24,7 +24,7 @@ if (-not $Paths) {
 }
 
 $joyLine = '^\s*"JOY([1-9]|[12][0-9]|3[0-2])"\s+"([^"]*)"\s*$'
-$showMmrValue = '^(showmmr_user:[0-9]+:p1:[1-3]:[0-9]+:[0-9]{10}:[0-9]+:[0-9]+:[0-9]+:[0-3]|showmmr_(pending(_v2)?|user):[0-9,:\[\]-]+|[0-9]{8,}:\[[0-9]+,-?[0-9]+\](,[0-9]{8,}:\[[0-9]+,-?[0-9]+\])*)$'
+$showMmrValue = '^(showmmr_user:[0-9]+:p1:[1-3]:[0-9]+:[0-9]{10}:[0-9]+:[0-9]+:[0-9]+:[0-3]|showmmr_settings:[01]:[01]|showmmr_(pending(_v2)?|user):[0-9,:\[\]-]+|[0-9]{8,}:\[[0-9]+,-?[0-9]+\](,[0-9]{8,}:\[[0-9]+,-?[0-9]+\])*)$'
 $backupRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("showmmr_backup_" + [guid]::NewGuid().ToString('N'))
 $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
 $filesChanged = 0

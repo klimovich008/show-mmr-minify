@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $PSScriptRoot '../scripts/clear_show_mmr_data.ps1'), [ref]$tokens, [ref]$errors)
+    (Join-Path $PSScriptRoot '../tools/clear_show_mmr_data.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw $errors[0] }
 $assignment = $ast.Find({ param($node)
     $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
@@ -14,11 +14,11 @@ $literal = $assignment.Right.Find({ param($node)
 }, $true)
 if (-not $literal) { throw 'Cleanup predicate must remain a string literal' }
 $pattern = $literal.Value
-foreach ($value in @('showmmr_user:123', '1783404000:[6000,-25]',
+foreach ($value in @('showmmr_user:123', '1783404000:[6000,-25]', 'showmmr_settings:0:1',
     'showmmr_user:123:p1:2:7000:1783500000:1783404000:8883733433:1783500100:0')) {
     if ($value -notmatch $pattern) { throw "Missed ShowMMR value: $value" }
 }
-foreach ($value in @('+attack', 'showmmr_user:123:p2:1',
+foreach ($value in @('+attack', 'showmmr_user:123:p2:1', 'showmmr_settings:2:1',
     'showmmr_user:123:p1:2:7000:1783500000:1783404000:8883733433:1783500100:0;echo test')) {
     if ($value -match $pattern) { throw "Would remove unrelated or unsupported value: $value" }
 }

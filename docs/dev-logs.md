@@ -11,7 +11,7 @@ Python packages or administrator rights are required. In PowerShell, from the
 repository root:
 
 ```powershell
-.\scripts\install_dev_log_collector.ps1 `
+.\tools\install_dev_log_collector.ps1 `
   -DotaPath 'C:\Program Files (x86)\Steam\steamapps\common\dota 2 beta' `
   -MinifyPath "$env:USERPROFILE\Downloads\Minify-v1.14rc6-windows" `
   -PythonPath 'C:\Path\To\Python\pythonw.exe'
@@ -74,7 +74,7 @@ sharing. The helper neither scrapes the screen nor records keystrokes.
 ## Stop and Remove Autostart
 
 ```powershell
-.\scripts\install_dev_log_collector.ps1 -Uninstall
+.\tools\install_dev_log_collector.ps1 -Uninstall
 ```
 
 This requests a graceful stop and removes only this tool's startup shortcut.
