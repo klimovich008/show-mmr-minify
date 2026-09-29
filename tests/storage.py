@@ -226,7 +226,12 @@ lua.execute('''
         JOY1='1789241774:[6281,40]',
         JOY32='showmmr_user:996:p1:3:6281:1789246883:1789241774:0:0:1'
     }}
+    commands = {}
     ShowMMR:Init({networkid='[U:1:996]'})
+    -- Loaded history is re-asserted so Dota's exit save cannot drop it from a stale memory copy.
+    assert(#commands==33 and commands[1]=='bindss 3 JOY1 "1789241774:[6281,40]";' and
+        commands[32]=='bindss 3 JOY32 "showmmr_user:996:p1:3:6281:1789246883:1789241774:0:0:1";' and
+        commands[33]:match('^writekeybindings'), 'init must rewrite loaded history unchanged')
     commands = {}
     local e = {user='996', idle=1, finished=1, calibrated=1, outcome=1,
         time=1789250265, previous=1789246981, at=1789252522, mmr=6354}

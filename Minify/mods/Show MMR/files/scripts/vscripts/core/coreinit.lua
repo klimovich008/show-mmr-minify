@@ -133,7 +133,9 @@ function ShowMMR:Init(e)
 			end
 		end
 	end
-	self:Publish()
+	-- Dota rewrites slot3 from its in-memory bindings on exit. On 2026-09-28 that copy lacked
+	-- JOY1-32 and a clean exit erased 10 records, so re-assert every successfully loaded history.
+	if not self.blocked and (next(self.data) or self.pending) then self:Save() else self:Publish() end
 	print('[ShowMMR] init user=' .. user .. ' revision=' .. tostring(self.revision))
 	if not self.listener and CustomGameEventManager then
 		self.listener = true
