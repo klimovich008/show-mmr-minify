@@ -8,9 +8,6 @@ var ShowMMR_LastDebugEnabled = true;
 
 var ShowMMR_LastDebug = function (message) {
 	if (!ShowMMR_LastDebugEnabled) return;
-	var dashboard = $("#Dashboard"), core = dashboard && dashboard.FindChildInLayoutFile("DashboardCore");
-	var data = core && core.Data.ShowMMR;
-	if (data && data.options && data.options.verbose === false) return;
 	$.Msg("[ShowMMR] " + message);
 };
 

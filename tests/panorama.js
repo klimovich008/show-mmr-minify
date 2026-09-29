@@ -281,7 +281,8 @@ entry._showMMROriginalResult = 'Win';
 context.ShowMMR_ProfileApplyLabel(entry, label, data, {mmr: 6025, shift: 25});
 assert.equal(label.text, 'Win', 'hidden overlay restores native result without deleting history');
 vm.runInContext(fs.readFileSync(path.join(scripts, 'show_mmr_settings.js'), 'utf8'), context);
-const controls = Object.fromEntries(['ShowMMRAccount', 'ShowMMRStatus', 'ShowMMRBaseline', 'ShowMMRPending', 'ShowMMRHistory', 'ShowMMRRefresh', 'ShowMMRShow', 'ShowMMRAuto', 'ShowMMRVerbose'].map(id => [id, {}]));
+const controls = Object.fromEntries(['ShowMMRAccount', 'ShowMMRStatus', 'ShowMMRBaseline', 'ShowMMRPending', 'ShowMMRHistory', 'ShowMMRRefresh', 'ShowMMRShow', 'ShowMMRAuto',
+    'ShowMMRCapture', 'ShowMMRLast', 'ShowMMRToday', 'ShowMMRReset'].map(id => [id, {}]));
 const settingsRoot = {id: 'ShowMMRSettingsSection', IsValid: () => true, FindChildTraverse: id => controls[id]};
 const getContext = $.GetContextPanel;
 $.GetContextPanel = () => settingsRoot;
@@ -291,6 +292,23 @@ assert.equal(controls.ShowMMRAccount.text, 'Account: 456');
 controls.ShowMMRShow.checked = true;
 context.ShowMMR_SettingsChange('show', 'ShowMMRShow');
 assert.equal(data.options.show, true);
+assert.equal(controls.ShowMMRReset.enabled, false, 'healthy or missing baseline cannot be reset');
+const nowSeconds = Math.floor(now / 1000);
+context.ShowMMR_SettingsResults(settingsRoot, {[nowSeconds - 90000]: [7000, 30],
+    [nowSeconds - 7200]: [7025, 25], [nowSeconds - 600]: [7005, -20]});
+assert.equal(controls.ShowMMRLast.text, 'Last result: -20 -> 7005 (10 min ago)');
+assert.equal(controls.ShowMMRToday.text, 'Last 24 hours: +5 (1W 1L)', 'older results stay out of the window');
+context.ShowMMR_SettingsResults(settingsRoot, {});
+assert.equal(controls.ShowMMRToday.text, 'Last 24 hours: no recorded ranked results');
+assert.equal(context.ShowMMR_SettingsCapture({CaptureRequested: true, CaptureStatus: 'waiting for match history after game; newest row=1'}),
+    'waiting for Dota to publish the last match');
+assert.equal(context.ShowMMR_SettingsCapture({CaptureRequested: false, CaptureStatus: 'awaiting save acknowledgement'}), 'idle');
+const locked = {historyReady: true, user: '456', pending: {phase: 3, reason: 2}};
+const resetStart = sent.length;
+assert.equal(context.ShowMMR_ResetBaseline({...locked, pending: {phase: 3, reason: 1}}), false, 'gap locks recover by themselves');
+assert.equal(context.ShowMMR_ResetBaseline({...locked, storageBlocked: true}), false);
+assert.equal(context.ShowMMR_ResetBaseline(locked), true);
+assert.deepEqual([names.at(-1), sent.length - resetStart, locked.CaptureRequested], ['ShowMMR_ResetBaseline', 1, true]);
 const settingsCallbacks = scheduled.length;
 settingsRoot.IsValid = () => false;
 context.ShowMMR_SettingsUpdate(settingsRoot);

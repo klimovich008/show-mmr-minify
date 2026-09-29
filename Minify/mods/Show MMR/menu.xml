@@ -11,20 +11,25 @@
         <Label id="ShowMMRStatus" class="SettingsSubLabel" text="Storage: waiting" />
         <Label id="ShowMMRBaseline" class="SettingsSubLabel" text="Baseline: unavailable" />
         <Label id="ShowMMRPending" class="SettingsSubLabel" text="Pending match: none" />
+        <Label id="ShowMMRCapture" class="SettingsSubLabel" text="Recording: waiting" />
         <Label id="ShowMMRHistory" class="SettingsSubLabel" text="History: waiting" />
+        <Label id="ShowMMRLast" class="SettingsSubLabel" text="Last result: none" />
+        <Label id="ShowMMRToday" class="SettingsSubLabel" text="Last 24 hours: none" />
         <Button id="ShowMMRRefresh" class="ButtonBevel" onactivate="ShowMMR_SettingsRefresh()" style="width: 280px; margin-top: 12px;">
           <Label text="Refresh from history" />
+        </Button>
+        <Button id="ShowMMRReset" class="ButtonBevel" onactivate="ShowMMR_SettingsResetBaseline()" style="width: 280px; margin-top: 8px;">
+          <Label text="Start new baseline" />
         </Button>
       </Panel>
     </Panel>
   </Panel>
-  <Panel class="SettingsSubsectionContainer" subsection="Session settings">
-    <Label class="SettingsSectionSubtitle" text="Session settings" />
+  <Panel class="SettingsSubsectionContainer" subsection="Settings">
+    <Label class="SettingsSectionSubtitle" text="Settings (reset when Dota restarts)" />
     <Panel class="SettingsSectionColumnContainer FilledBackground">
       <Panel class="SettingsSectionColumn">
         <ToggleButton id="ShowMMRShow" text="Show MMR in match results" onactivate="ShowMMR_SettingsChange('show', 'ShowMMRShow')" />
-        <ToggleButton id="ShowMMRAuto" text="Open history automatically for capture" onactivate="ShowMMR_SettingsChange('auto', 'ShowMMRAuto')" />
-        <ToggleButton id="ShowMMRVerbose" text="Detailed UI logs" onactivate="ShowMMR_SettingsChange('verbose', 'ShowMMRVerbose')" />
+        <ToggleButton id="ShowMMRAuto" text="Record results automatically (briefly opens your match history)" onactivate="ShowMMR_SettingsChange('auto', 'ShowMMRAuto')" />
       </Panel>
     </Panel>
   </Panel>

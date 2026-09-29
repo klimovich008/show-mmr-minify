@@ -256,6 +256,19 @@ lua.execute('''
     local writes=#commands
     ShowMMR:Refresh(nil, e)
     assert(#commands==writes and ShowMMR.pending.reason==3)
+    -- Settings "Start new baseline" unlocks only the owner's locked pending and keeps history.
+    local history = ShowMMR.data[1789241774]
+    ShowMMR:ResetBaseline(nil, {user='997'})
+    assert(#commands==writes and ShowMMR.pending.reason==3, 'another account cannot unlock')
+    ShowMMR:ResetBaseline(nil, {user='996'})
+    assert(ShowMMR.pending==nil and ShowMMR.data[1789241774]==history)
+    assert(#commands==writes+2 and commands[writes+1]=='bindss 3 JOY32 "showmmr_user:996";')
+    ShowMMR:ResetBaseline(nil, {user='996'})
+    assert(#commands==writes+2, 'nothing to unlock')
+    ShowMMR:Baseline(nil, {user='996', idle=1, calibrated=1, mmr=6400, at=1789300000, previous=1789260000})
+    assert(ShowMMR.pending.phase==1 and ShowMMR.pending.mmr==6400, 'fresh baseline after unlock')
+    ShowMMR:ResetBaseline(nil, {user='996'})
+    assert(ShowMMR.pending.phase==1, 'a healthy baseline is never cleared')
 ''')
 
 # Exercise the patch hook against a fake Minify output folder.

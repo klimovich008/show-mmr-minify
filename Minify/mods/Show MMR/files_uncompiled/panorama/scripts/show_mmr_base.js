@@ -3,8 +3,7 @@
 var ShowMMR_DebugEnabled = true;
 var ShowMMR_WatchError = "";
 var ShowMMR_Debug = function (message) {
-	var data = ShowMMR_GetData();
-	if (ShowMMR_DebugEnabled && !(data && data.options && data.options.verbose === false)) $.Msg("[ShowMMR] " + message);
+	if (ShowMMR_DebugEnabled) $.Msg("[ShowMMR] " + message);
 };
 
 var ShowMMR_GetData = function () {
@@ -151,6 +150,18 @@ var ShowMMR_LastMatchSignal = function (data, epoch) {
 	ShowMMR_Debug("base: last match epoch=" + epoch + " is newer than baseline; capture requested");
 };
 
+// Settings button: Lua drops a locked pending baseline (history stays); the next idle visit captures a new one.
+var ShowMMR_ResetBaseline = function (data) {
+	var pending = data.pending;
+	if (!data.historyReady || data.storageBlocked || !pending || pending.phase !== 3 || pending.reason === 1) return false;
+	if (typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return false;
+	GameEvents.SendCustomGameEventToServer("ShowMMR_ResetBaseline", {user: data.user});
+	data.CaptureRequested = true;
+	data.CaptureAttempts = 0;
+	ShowMMR_Debug("base: new baseline requested; locked reason=" + pending.reason);
+	return true;
+};
+
 var ShowMMR_WatchDashboard = function () {
 	var data = null;
 	try {
@@ -267,6 +278,7 @@ var ShowMMR_Init = function () {
 	data.FinishCapture = function (success) { ShowMMR_FinishCapture(data, success); };
 	data.SignalLastMatch = function (epoch) { ShowMMR_LastMatchSignal(data, epoch); };
 	data.RefreshHistory = function () { return ShowMMR_Refresh(true, true); };
+	data.ResetBaseline = function () { return ShowMMR_ResetBaseline(data); };
 	data.StartupGraceUntil = Date.now() + 120000;
 	ShowMMR_Debug("base: loaded");
 	ShowMMR_Debug("base: capabilities match_id=" + (typeof Game !== "undefined" && typeof Game.GetMatchID === "function") +

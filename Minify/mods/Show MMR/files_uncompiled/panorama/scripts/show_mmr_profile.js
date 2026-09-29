@@ -12,9 +12,6 @@ var ShowMMR_ProfileDebugEnabled = true;
 
 var ShowMMR_ProfileDebug = function (message) {
 	if (!ShowMMR_ProfileDebugEnabled) return;
-	var dashboard = $("#Dashboard"), core = dashboard && dashboard.FindChildInLayoutFile("DashboardCore");
-	var data = core && core.Data.ShowMMR;
-	if (data && data.options && data.options.verbose === false) return;
 	$.Msg("[ShowMMR] " + message);
 };
 

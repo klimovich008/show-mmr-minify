@@ -4,8 +4,6 @@
 var ShowMMR_BattleRead = function (root) {
 	if (!root || !root.IsValid()) return;
 	try {
-		var dashboard = $("#Dashboard"), core = root.FindAncestor("DashboardCore") || (dashboard && dashboard.FindChildInLayoutFile("DashboardCore"));
-		var data = core && core.Data.ShowMMR;
 		var header = root.FindChildTraverse("MatchesColumnsHeader");
 		var list = root.FindChildTraverse("MatchesList");
 		if (!header || !list) return;
@@ -24,7 +22,7 @@ var ShowMMR_BattleRead = function (root) {
 		var signature = JSON.stringify({local: root.BHasClass("LocalUser"), visible: root.BHasClass("PageVisible"), headers: headers, rows: samples, count: rows.length});
 		if (samples.length && signature !== root._showMMRBattleSample) {
 			root._showMMRBattleSample = signature;
-			if (!(data && data.options && data.options.verbose === false)) $.Msg("[ShowMMR] dota_plus read-only: " + signature);
+			$.Msg("[ShowMMR] dota_plus read-only: " + signature);
 		}
 	} catch (error) {
 		if (root._showMMRBattleError !== String(error)) {

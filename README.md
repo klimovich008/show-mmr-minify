@@ -105,10 +105,14 @@ For development, an [optional local log collector](scripts/DEV_LOGS.md) can arch
 full Dota/Minify logs across restarts and start at Windows sign-in. It is entirely
 separate from the mod: no bindings are changed and the mod never reads its files.
 
-Settings > Show MMR displays the loaded account, baseline, pending state, and
-saved-match count. Refresh from history requests a capture while idle. Session
-toggles control result overlays, automatic history navigation, and detailed UI
-logs; these reset when Dota restarts. Lua storage diagnostics remain enabled.
+Settings > Show MMR displays the loaded account, baseline, pending state, what
+automatic recording is doing, saved-match count, the last saved result and the
+net change over the last 24 hours. Refresh from history requests a capture while
+idle. Start new baseline is enabled only when a conflict or rating change has
+locked the baseline; it clears that lock, keeps history, and lets the next idle
+history visit capture a fresh baseline without a delta. Session toggles control
+result overlays and automatic recording; they reset when Dota restarts. Console
+logging always stays on, since it is the only record for diagnosing captures.
 
 The development build includes a read-only Dota+ Battle Stats probe. It samples
 the first three loaded match rows and their column headings into console logs,

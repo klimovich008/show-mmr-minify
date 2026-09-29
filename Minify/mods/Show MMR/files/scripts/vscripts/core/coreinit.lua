@@ -142,6 +142,7 @@ function ShowMMR:Init(e)
 		CustomGameEventManager:RegisterListener('ShowMMR_Refresh', function(...) return self:Refresh(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_Baseline', function(...) return self:Baseline(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_Begin', function(...) return self:Begin(...) end)
+		CustomGameEventManager:RegisterListener('ShowMMR_ResetBaseline', function(...) return self:ResetBaseline(...) end)
 		CustomGameEventManager:RegisterListener('ShowMMR_Probe', function(_, payload)
 			if type(payload) == 'table' then
 				print('[ShowMMR] dashboard received probe user=' .. self.user .. ' source=' .. tostring(payload.source):sub(1, 64))
@@ -185,6 +186,16 @@ function ShowMMR:Baseline(_, e)
 	end
 	for epoch in pairs(self.data) do if epoch > previous then return end end
 	self.pending = {phase=1, mmr=mmr, at=at, previous=previous, match_id='0', started=0, reason=0}
+	self:SavePending()
+end
+
+-- Settings "Start new baseline": drop only a locked (reason 2/3) pending state. History is kept;
+-- the next idle history visit records a fresh baseline without inventing a delta.
+function ShowMMR:ResetBaseline(_, e)
+	local p = self.pending
+	if not self:OwnEvent(e) or not p or p.phase ~= 3 or p.reason == 1 then return end
+	print('[ShowMMR] locked baseline cleared by user reason=' .. p.reason .. ' mmr=' .. p.mmr)
+	self.pending = nil
 	self:SavePending()
 end
 
