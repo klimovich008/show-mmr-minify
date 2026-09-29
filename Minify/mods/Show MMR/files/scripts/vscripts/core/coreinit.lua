@@ -10,11 +10,27 @@ local function integer(value, minimum, maximum)
 end
 
 -- slot3 layout: JOY1-JOY30 history pages, JOY31 settings, JOY32 account/pending marker.
-local MAX_RECORDS = 100 -- five pages; older builds kept up to 620 across JOY1-JOY31.
+local MAX_RECORDS = 100 -- about six pages; older builds kept up to 620 across JOY1-JOY31.
 local HISTORY_PAGES = 30
 
 local function settings_value(options)
 	return 'showmmr_settings:' .. options.show .. ':' .. options.auto
+end
+
+-- Ten-digit Unix time, the key format of the existing on-disk history.
+local function epoch_time(value) return integer(value, 1000000000, 9999999999) end
+-- Latest completed match epoch; 0 means the account has no ranked history yet.
+local function previous_time(value) return integer(value, 0, 9999999999) end
+local function rating(value) return integer(value, 1, 100000) end
+
+-- Pending phase 1: MMR observed at `at`, after the ranked match `previous`.
+local function new_baseline(mmr, at, previous)
+	return {phase=1, mmr=mmr, at=at, previous=previous, match_id='0', started=0, reason=0}
+end
+
+-- Phase 3 locks the baseline, except reason 1 (history gap), which may still rebase.
+local function locked(p)
+	return p.phase == 3 and p.reason ~= 1
 end
 
 function ShowMMR:StorageUser(bindings)
@@ -34,9 +50,9 @@ function ShowMMR:ReadPending(marker)
 	if marker == '' or marker == 'showmmr_user:' .. self.user then return nil, true end
 	local user, phase, mmr, at, previous, id, started, reason = marker:match(
 		'^showmmr_user:(%d+):p1:(%d+):(%d+):(%d+):(%d+):(%d+):(%d+):(%d+)$')
-	phase, mmr = integer(phase, 1, 3), integer(mmr, 1, 100000)
-	at, previous = integer(at, 1000000000, 9999999999), integer(previous, 0, 9999999999)
-	started, reason = integer(started, 0, 9999999999), integer(reason, 0, 3)
+	phase, mmr = integer(phase, 1, 3), rating(mmr)
+	at, previous = epoch_time(at), previous_time(previous)
+	started, reason = previous_time(started), integer(reason, 0, 3)
 	id = match_id(id)
 	if user ~= self.user or not phase or not mmr or not at or not previous or not id
 		or not started or not reason or previous >= at then return nil, false end
@@ -76,8 +92,7 @@ function ShowMMR:ReadBindings(bindings)
 			local ok, page = pcall(json.decode, '{' .. quoted .. '}')
 			if not ok or type(page) ~= 'table' then return nil end
 			for key, record in pairs(page) do
-				-- Ten-digit match epochs are compatible with the existing on-disk format.
-				local epoch = integer(key, 1000000000, 9999999999)
+				local epoch = epoch_time(key)
 				if not epoch or type(record) ~= 'table' or #record ~= 2
 					or not integer(record[1], 0, 100000) or not integer(record[2], -100000, 100000)
 					or records[epoch] then return nil end
@@ -92,21 +107,18 @@ function ShowMMR:Publish()
 	if not CustomNetTables then return end
 	self.revision = (self.revision or 0) + 1
 	local page, pages, count, size = {}, 0, 0, 0
-	for epoch, record in pairs(self.data) do
-		page[' ' .. epoch] = {record[1], record[2]}
-		count, size = count + 1, size + 1
-		if size == 100 then
-			pages = pages + 1
-			CustomNetTables:SetTableValue('ShowMMR_history', 'page' .. pages,
-				{user = self.user, revision = self.revision, records = page})
-			page, size = {}, 0
-		end
-	end
-	if size > 0 then
+	local function flush()
 		pages = pages + 1
 		CustomNetTables:SetTableValue('ShowMMR_history', 'page' .. pages,
 			{user = self.user, revision = self.revision, records = page})
+		page, size = {}, 0
 	end
+	for epoch, record in pairs(self.data) do
+		page[' ' .. epoch] = {record[1], record[2]}
+		count, size = count + 1, size + 1
+		if size == 100 then flush() end
+	end
+	if size > 0 then flush() end
 	-- Publish the header last; clients wait for every page of this revision.
 	CustomNetTables:SetTableValue('ShowMMR_history', 'state',
 		{user = self.user, revision = self.revision, pages = pages, count = count,
@@ -170,16 +182,22 @@ function ShowMMR:OwnEvent(e)
 	return type(e) == 'table' and self.user and not self.blocked and tostring(e.user) == self.user
 end
 
-function ShowMMR:SavePending()
-	if not self.user or self.blocked then return end
+-- Queue JOY32 plus a flush of the slot3 bindings file; not proof the file was written.
+function ShowMMR:WriteMarker()
 	SendToServerConsole('bindss 3 JOY32 "' .. self:Marker() .. '";')
 	SendToServerConsole('writekeybindings | grep % ^;')
+end
+
+function ShowMMR:SavePending()
+	if not self.user or self.blocked then return end
+	self:WriteMarker()
 	print('[ShowMMR] pending write queued phase=' .. tostring(self.pending and self.pending.phase or 0))
 	self:Publish()
 end
 
 function ShowMMR:Uncertain(reason)
-	if not self.pending or (self.pending.phase == 3 and (self.pending.reason ~= 1 or reason == 1)) then return end
+	-- A gap (reason 1) may be upgraded to a hard reason, never the other way round.
+	if not self.pending or locked(self.pending) or (self.pending.phase == 3 and reason == 1) then return end
 	self.pending.phase, self.pending.reason = 3, reason
 	print('[ShowMMR] pending retained: uncertain reason=' .. reason)
 	self:SavePending()
@@ -189,8 +207,7 @@ function ShowMMR:Baseline(_, e)
 	if not self:OwnEvent(e) then return end
 	if tonumber(e.calibrated) == 0 then self:Uncertain(3); return end
 	if tonumber(e.idle) ~= 1 or tonumber(e.calibrated) ~= 1 then return end
-	local mmr, at = integer(e.mmr, 1, 100000), integer(e.at, 1000000000, 9999999999)
-	local previous = integer(e.previous, 0, 9999999999)
+	local mmr, at, previous = rating(e.mmr), epoch_time(e.at), previous_time(e.previous)
 	if not mmr or not at or not previous or previous >= at then return end
 	if self.pending then
 		-- Never refresh an unresolved baseline from a post-match or reconnect view.
@@ -200,7 +217,7 @@ function ShowMMR:Baseline(_, e)
 		return
 	end
 	for epoch in pairs(self.data) do if epoch > previous then return end end
-	self.pending = {phase=1, mmr=mmr, at=at, previous=previous, match_id='0', started=0, reason=0}
+	self.pending = new_baseline(mmr, at, previous)
 	self:SavePending()
 end
 
@@ -220,7 +237,7 @@ end
 -- the next idle history visit records a fresh baseline without inventing a delta.
 function ShowMMR:ResetBaseline(_, e)
 	local p = self.pending
-	if not self:OwnEvent(e) or not p or p.phase ~= 3 or p.reason == 1 then return end
+	if not self:OwnEvent(e) or not p or not locked(p) then return end
 	print('[ShowMMR] locked baseline cleared by user reason=' .. p.reason .. ' mmr=' .. p.mmr)
 	self.pending = nil
 	self:SavePending()
@@ -229,7 +246,7 @@ end
 function ShowMMR:Begin(_, e)
 	if not self:OwnEvent(e) or tonumber(e.before_start) ~= 1 then return end
 	local p, id = self.pending, match_id(e.match_id)
-	local at = integer(e.at, 1000000000, 9999999999)
+	local at = epoch_time(e.at)
 	if not p or p.phase == 3 or not id or id == '0' or not at or at < p.at then return end
 	if p.phase == 2 then
 		if p.match_id ~= id then self:Uncertain(2) end
@@ -241,10 +258,10 @@ end
 
 function ShowMMR:Reconcile(e)
 	local p = self.pending
-	if not p or (p.phase == 3 and p.reason ~= 1) or tonumber(e.idle) ~= 1 or tonumber(e.finished) ~= 1
+	if not p or locked(p) or tonumber(e.idle) ~= 1 or tonumber(e.finished) ~= 1
 		or tonumber(e.calibrated) ~= 1 then return end
-	local mmr, epoch = integer(e.mmr, 1, 100000), integer(e.time, 1000000000, 9999999999)
-	local previous, at = integer(e.previous, 0, 9999999999), integer(e.at, 1000000000, 9999999999)
+	local mmr, epoch = rating(e.mmr), epoch_time(e.time)
+	local previous, at = previous_time(e.previous), epoch_time(e.at)
 	if not mmr or not epoch or not previous or not at or epoch >= at or at < p.at
 		or epoch <= p.previous or previous >= epoch then return end
 	-- ponytail: allow 30s of row/observation overlap (11s observed before connection).
@@ -256,7 +273,7 @@ function ShowMMR:Reconcile(e)
 		for time in pairs(self.data) do if time > epoch then return end end
 		if self.data[epoch] and self.data[epoch][1] ~= mmr then self:Uncertain(2); return end
 		-- Keep missing results unknown; only advance the baseline for future matches.
-		self.pending = {phase=1, mmr=mmr, at=at, previous=epoch, match_id='0', started=0, reason=0}
+		self.pending = new_baseline(mmr, at, epoch)
 		self.outcomeConflict = nil
 		print('[ShowMMR] gap rebase previous=' .. p.previous .. ' baseline_mmr=' .. p.mmr ..
 			' baseline_at=' .. p.at .. ' epoch=' .. epoch .. ' mmr=' .. mmr .. ' (no match delta saved)')
@@ -280,7 +297,7 @@ function ShowMMR:Reconcile(e)
 	if known and (known[1] ~= mmr or known[2] ~= change) then self:Uncertain(2); return end
 	self.data[epoch] = {mmr, change}
 	-- The post-match observation becomes the next pre-match baseline only after reconciliation.
-	self.pending = {phase=1, mmr=mmr, at=at, previous=epoch, match_id='0', started=0, reason=0}
+	self.pending = new_baseline(mmr, at, epoch)
 	print('[ShowMMR] reconciled epoch=' .. epoch .. ' change=' .. change .. ' baseline_overlap=' .. math.max(0, p.at - epoch))
 	self:Save()
 end
@@ -316,8 +333,7 @@ function ShowMMR:Save()
 		SendToServerConsole('bindss 3 JOY' .. i .. ' "' .. (pages[i] or '') .. '";')
 	end
 	SendToServerConsole('bindss 3 JOY31 "' .. settings_value(self.options) .. '";')
-	SendToServerConsole('bindss 3 JOY32 "' .. self:Marker() .. '";')
-	SendToServerConsole('writekeybindings | grep % ^;')
+	self:WriteMarker()
 	print('[ShowMMR] binding write queued pages=' .. #pages)
 	self:Publish()
 end

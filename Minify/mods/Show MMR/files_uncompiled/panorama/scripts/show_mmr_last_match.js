@@ -106,15 +106,7 @@ var ShowMMR_LastMatchUpdated = function () {
 	var epoch = ShowMMR_LastEpoch(root, stampDate, found);
 
 	var known = data.history[epoch];
-	if (!found) {
-		found = {
-			label: "",
-			epoch: epoch,
-			mmr: known ? known[0] : -1,
-			shift: known ? known[1] : -1
-		};
-		data.show[stamp] = found;
-	}
+	if (!found) found = data.show[stamp] = {label: ""};
 	found.epoch = epoch;
 	found.mmr = known ? known[0] : -1;
 	found.shift = known ? known[1] : -1;

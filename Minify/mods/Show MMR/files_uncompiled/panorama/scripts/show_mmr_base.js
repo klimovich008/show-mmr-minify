@@ -1,5 +1,9 @@
 "use strict";
 
+// DOTAGameUIStateChanged values.
+var ShowMMR_UI_INIT = 1;
+var ShowMMR_UI_DASHBOARD = 3;
+
 var ShowMMR_DebugEnabled = true;
 var ShowMMR_WatchError = "";
 var ShowMMR_Debug = function (message) {
@@ -100,9 +104,14 @@ var ShowMMR_LoadHistory = function (data) {
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
 };
 
+// Phase 3 locks the baseline, except reason 1 (history gap), which may still rebase.
+var ShowMMR_PendingLocked = function (pending) {
+	return !!pending && pending.phase === 3 && pending.reason !== 1;
+};
+
 var ShowMMR_IsDashboard = function () {
 	var data = ShowMMR_GetData();
-	return data && data.UIState === 3;
+	return data && data.UIState === ShowMMR_UI_DASHBOARD;
 };
 
 var ShowMMR_IsIdle = function () {
@@ -147,7 +156,7 @@ var ShowMMR_FinishCapture = function (data, success) {
 // Dota's last-match panel updates when GC publishes a match; re-arm capture for it.
 var ShowMMR_LastMatchSignal = function (data, epoch) {
 	var pending = data.pending, now = Math.floor(Date.now() / 1000);
-	if (!data.historyReady || data.storageBlocked || !pending || (pending.phase === 3 && pending.reason !== 1)) return;
+	if (!data.historyReady || data.storageBlocked || !pending || ShowMMR_PendingLocked(pending)) return;
 	if (!(epoch > pending.previous) || epoch > now || (data.history && data.history[epoch]) ||
 		epoch <= (data.LatestRowEpoch || 0) || data.SignaledEpoch === epoch) return;
 	data.SignaledEpoch = epoch;
@@ -160,7 +169,7 @@ var ShowMMR_LastMatchSignal = function (data, epoch) {
 // Settings button: Lua drops a locked pending baseline (history stays); the next idle visit captures a new one.
 var ShowMMR_ResetBaseline = function (data) {
 	var pending = data.pending;
-	if (!data.historyReady || data.storageBlocked || !pending || pending.phase !== 3 || pending.reason === 1) return false;
+	if (!data.historyReady || data.storageBlocked || !ShowMMR_PendingLocked(pending)) return false;
 	if (typeof GameEvents === "undefined" || !GameEvents.SendCustomGameEventToServer) return false;
 	GameEvents.SendCustomGameEventToServer("ShowMMR_ResetBaseline", {user: data.user});
 	data.CaptureRequested = true;
@@ -194,7 +203,7 @@ var ShowMMR_WatchDashboard = function () {
 				ShowMMR_Debug("base: play " + nativeState);
 			}
 		}
-		if (idle && data.historyReady && !data.storageBlocked && (!data.pending || data.pending.phase !== 3 || data.pending.reason === 1)) {
+		if (idle && data.historyReady && !data.storageBlocked && !ShowMMR_PendingLocked(data.pending)) {
 			if (!data.InitialBaselineRequested || (!data.WasQueued && queued) || data.WasIdle === false) {
 				data.CaptureRequested = true;
 				data.CaptureAttempts = 0;
@@ -225,7 +234,7 @@ var ShowMMR_Refresh = function (force, manual) {
 	var data = ShowMMR_GetData();
 	if (!data || data.Refreshing || !ShowMMR_IsIdle()) return;
 	if (!manual && data.options && data.options.auto === false) return;
-	if (!data.historyReady || data.storageBlocked || (data.pending && data.pending.phase === 3 && data.pending.reason !== 1)) return;
+	if (!data.historyReady || data.storageBlocked || ShowMMR_PendingLocked(data.pending)) return;
 	var now = Date.now();
 	if (!force && data.StartupGraceUntil && now < data.StartupGraceUntil) return;
 	if (manual) data.CaptureAttempts = 0;
@@ -260,17 +269,19 @@ var ShowMMR_Refresh = function (force, manual) {
 var ShowMMR_GameUIStateChanged = function (oldState, newState) {
 	var data = ShowMMR_GetData();
 	if (!data) return;
+	var left = Number(oldState) === ShowMMR_UI_DASHBOARD, onDashboard = Number(newState) === ShowMMR_UI_DASHBOARD;
 	data.UIState = Number(newState);
 	ShowMMR_Debug("base: ui_state=" + data.UIState);
 	data.Candidate = null;
-	if (Number(oldState) === 3 && Number(newState) !== 3 && !data.ExpectResultAfter) {
+	if (left && !onDashboard && !data.ExpectResultAfter) {
 		// ponytail: match rows can start before the dashboard is left; allow two minutes.
 		data.ExpectResultAfter = Math.floor(Date.now() / 1000) - 120;
 	}
-	if (Number(newState) !== 3) { data.Refreshing = false; return; }
+	if (!onDashboard) { data.Refreshing = false; return; }
 	ShowMMR_LoadHistory(data);
 	$.DispatchEvent("DOTABackgroundLastMatchUpdated");
-	if (oldState !== 1 && oldState !== 3) {
+	// Returning from a game (not startup or a dashboard re-send): look for the new result.
+	if (oldState !== ShowMMR_UI_INIT && oldState !== ShowMMR_UI_DASHBOARD) {
 		$.Schedule(12.0, function () { ShowMMR_Refresh(true); });
 	}
 };
@@ -308,7 +319,7 @@ var ShowMMR_Init = function () {
 	if (typeof CustomNetTables !== "undefined" && CustomNetTables.SubscribeNetTableListener) {
 		CustomNetTables.SubscribeNetTableListener("ShowMMR_history", ShowMMR_AccountUpdated);
 	}
-	ShowMMR_GameUIStateChanged(1, 3);
+	ShowMMR_GameUIStateChanged(ShowMMR_UI_INIT, ShowMMR_UI_DASHBOARD);
 	$.Schedule(1.0, ShowMMR_WatchDashboard);
 	$.Schedule(45.0, function () { ShowMMR_Refresh(true); });
 };
